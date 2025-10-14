@@ -33,6 +33,8 @@ training:
   steps: 1000
   compile: false
   dataset: "c4"
+  #eval_interval: 500  # Setting eval_interval to run evaluation
+  #eval_steps: 100     # Number of validation batches during each evaluation run
 
 parallelism:
   data_parallel_replicate_degree: 1
