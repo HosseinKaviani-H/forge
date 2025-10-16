@@ -279,8 +279,29 @@ class ForgeSFTRecipe(ForgeActor, ForgeEngine):
         self.optimizers.step()
         self.lr_schedulers.step()
 
+    def _extract_epoch_from_batch(self, batch: dict) -> int | None:
+        """Extract epoch number from batch metrics."""
+        if "metrics" not in batch:
+            return None
+
+        for metric in batch["metrics"]:
+            if hasattr(metric, "metric_name") and metric.metric_name == "num_epochs":
+                return metric.value
+        return None
+
     async def evaluate(self) -> dict[str, float]:
-        """Run evaluation on validation set (internal method, not an endpoint)."""
+        """Run evaluation on validation set for one complete epoch.
+
+        Uses prefetch + non-blocking all_reduce pattern to detect epoch completion
+        across all ranks without blocking on every batch.
+
+        Pattern:
+        - Iteration N: Start async all_reduce on next batch's epoch (non-blocking)
+        - Process current batch while all_reduce completes in background
+        - Iteration N+1: Check result from previous all_reduce (should be done)
+
+        This overlaps communication with computation for better performance.
+        """
         logger.info("=" * 50)
         logger.info("STARTING EVALUATION ")
         logger.info("=" * 50)
@@ -292,30 +313,97 @@ class ForgeSFTRecipe(ForgeActor, ForgeEngine):
         val_dataloader = iter(self.val_dataloader)
         total_loss = 0.0
         num_batches = 0
+        starting_epoch = None
+
+        # Prefetch first batch
+        try:
+            next_batch = next(val_dataloader)
+        except StopIteration:
+            logger.warning("Validation dataloader is empty")
+            return {"val_loss": 0.0, "val_batches": 0}
+
+        next_should_break = False
+        pending_work = None  # Handle for async all_reduce
+        epoch_tensor = None  # Tensor for all_reduce result
 
         with torch.no_grad():
-            for step in range(self.eval_steps):
-                try:
-                    batch = next(val_dataloader)
+            while True:
+                # Check result from PREVIOUS iteration's async all_reduce
+                if pending_work is not None:
+                    pending_work.wait()  # Should be complete (or very fast) since we did compute
+                    if epoch_tensor is not None:
+                        next_should_break = epoch_tensor.item() > 0
+                    pending_work = None
 
-                    # Move tensors to device
-                    for k, v in batch.items():
-                        if isinstance(v, torch.Tensor):
-                            batch[k] = v.to(self.device)
-
-                    labels = batch.pop("labels")
-                    loss = self.forward_only(batch, labels)
-
-                    total_loss += loss.item()
-                    num_batches += 1
-
+                # Check if we should break (based on previous iteration's check)
+                if next_should_break:
                     logger.info(
-                        f"  Eval batch {num_batches}/{self.eval_steps} | Loss: {loss.item():.4f}"
+                        "Epoch completed across all ranks - stopping evaluation"
                     )
+                    break
+
+                # Check optional cap on eval steps
+                if self.eval_steps > 0 and num_batches >= self.eval_steps:
+                    logger.info(f"Reached eval_steps cap of {self.eval_steps}")
+                    break
+
+                # Use the batch that was prefetched in previous iteration
+                batch = next_batch
+
+                # Extract epoch from current batch
+                current_epoch = self._extract_epoch_from_batch(batch)
+                if current_epoch is not None and starting_epoch is None:
+                    starting_epoch = current_epoch
+                    logger.info(f"Starting evaluation at epoch {starting_epoch}")
+
+                # Prefetch next batch and start async all_reduce
+                try:
+                    next_batch = next(val_dataloader)
+
+                    # Extract epoch from next batch
+                    next_epoch = self._extract_epoch_from_batch(next_batch)
+
+                    # Start NON-BLOCKING all_reduce to check if any rank completed epoch
+                    if next_epoch is not None and starting_epoch is not None:
+                        # Check if next batch indicates epoch completion
+                        epoch_increment = next_epoch - starting_epoch
+
+                        if torch.distributed.is_initialized():
+                            # Create tensor for all_reduce
+                            epoch_tensor = torch.tensor(
+                                [epoch_increment], dtype=torch.long, device=self.device
+                            )
+                            # Start async all_reduce (returns immediately, doesn't block)
+                            pending_work = torch.distributed.all_reduce(
+                                epoch_tensor,
+                                op=torch.distributed.ReduceOp.MAX,
+                                async_op=True,  # NON-BLOCKING - returns immediately
+                            )
+                        else:
+                            # Single rank case - just check locally
+                            next_should_break = epoch_increment > 0
 
                 except StopIteration:
-                    logger.warning("Reached end of validation dataloader early")
-                    break
+                    # No more batches - this is the last one
+                    next_should_break = True
+
+                # Process current batch (while all_reduce completes in background)
+                # Move tensors to device
+                for k, v in batch.items():
+                    if isinstance(v, torch.Tensor):
+                        batch[k] = v.to(self.device)
+
+                labels = batch.pop("labels")
+                loss = self.forward_only(batch, labels)
+                # GPU compute happens here while network does all_reduce
+
+                total_loss += loss.item()
+                num_batches += 1
+
+                eval_steps_info = f"/{self.eval_steps}" if self.eval_steps > 0 else ""
+                logger.info(
+                    f"  Eval batch {num_batches}{eval_steps_info} | Loss: {loss.item():.4f}"
+                )
 
         # Set model back to train mode
         for model_part in self.model_parts:
