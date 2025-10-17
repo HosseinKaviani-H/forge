@@ -79,9 +79,25 @@ class ForgeSFTRecipe(ForgeActor, ForgeEngine):
         self._rank = current_rank().rank
         self._size = math.prod(current_size().values())
 
-        # Evaluation settings
-        self.eval_interval = job_config.training.get("eval_interval", float("inf"))
-        self.eval_steps = job_config.training.get("eval_steps", 0)
+        # Evaluation settings from validation config
+        validation_config = job_config.get("validation", {})
+        self.validation_enabled = validation_config.get("enabled", False)
+
+        if self.validation_enabled:
+            self.eval_interval = validation_config.get("eval_interval")
+            self.eval_steps = validation_config.get("eval_steps")
+
+            if self.eval_interval is None:
+                raise ValueError(
+                    "validation.eval_interval is required when validation.enabled is true"
+                )
+            if self.eval_steps is None:
+                raise ValueError(
+                    "validation.eval_steps is required when validation.enabled is true"
+                )
+        else:
+            self.eval_interval = None
+            self.eval_steps = None
 
         self._init_dist()
         super().__init__(job_config)
@@ -113,23 +129,30 @@ class ForgeSFTRecipe(ForgeActor, ForgeEngine):
 
     @endpoint
     async def setup(self):
-        # Setup training data (first 90% of train split)
+        # Setup training data from config
+        dataset_config = self.job_config.get("dataset")
+
         self.train_dataloader = self.setup_data(
-            dataset_path="yahma/alpaca-cleaned", dataset_split="train[:90%]"
+            dataset_path=dataset_config.get("path"),
+            dataset_split=dataset_config.get("split"),
         )
 
-        # Setup validation data (last 10% of train split)
+        # Setup validation data from config
+        dataset_val_config = self.job_config.get("dataset_val", {})
         self.val_dataloader = self.setup_data(
-            dataset_path="yahma/alpaca-cleaned", dataset_split="train[90%:]"
+            dataset_path=dataset_val_config.get("path", dataset_config.get("path")),
+            dataset_split=dataset_val_config.get("split", dataset_config.get("split")),
         )
 
         # Load checkpoint if resuming
         self.checkpointer.load(step=self.current_step)
 
-    def setup_data(
-        self, dataset_path: str = "yahma/alpaca-cleaned", dataset_split: str = "train"
-    ):
+    def setup_data(self, dataset_path: str, dataset_split: str):
         """Setup data with configurable dataset path and split."""
+        if not dataset_path or not dataset_split:
+            raise ValueError(
+                f"dataset.path and dataset.split are required in YAML config. Got path={dataset_path}, split={dataset_split}"
+            )
         print(os.path.join(self.job_config.model.hf_assets_path, "tokenizer.json"))
         tokenizer = HuggingFaceModelTokenizer(
             tokenizer_json_path=os.path.join(
@@ -281,39 +304,26 @@ class ForgeSFTRecipe(ForgeActor, ForgeEngine):
 
     def _extract_epoch_from_batch(self, batch: dict) -> int | None:
         """Extract epoch number from batch metrics."""
-        if "metrics" not in batch:
-            return None
-
-        for metric in batch["metrics"]:
-            if hasattr(metric, "metric_name") and metric.metric_name == "num_epochs":
-                return metric.value
+        if "metrics" in batch:
+            for metric in batch["metrics"]:
+                if (
+                    hasattr(metric, "metric_name")
+                    and metric.metric_name == "num_epochs"
+                ):
+                    return metric.value
         return None
 
     async def evaluate(self) -> dict[str, float]:
-        """Run evaluation on validation set for one complete epoch.
-
-        Uses prefetch + non-blocking all_reduce pattern to detect epoch completion
-        across all ranks without blocking on every batch.
-
-        Pattern:
-        - Iteration N: Start async all_reduce on next batch's epoch (non-blocking)
-        - Process current batch while all_reduce completes in background
-        - Iteration N+1: Check result from previous all_reduce (should be done)
-
-        This overlaps communication with computation for better performance.
-        """
+        """Run evaluation with async all_reduce for cross-rank epoch synchronization."""
         logger.info("=" * 50)
-        logger.info("STARTING EVALUATION ")
+        logger.info("STARTING EVALUATION")
         logger.info("=" * 50)
 
-        # Set model to eval mode
         for model_part in self.model_parts:
             model_part.eval()
 
         val_dataloader = iter(self.val_dataloader)
-        total_loss = 0.0
-        num_batches = 0
-        starting_epoch = None
+        total_loss, num_batches, starting_epoch = 0.0, 0, None
 
         # Prefetch first batch
         try:
@@ -322,106 +332,79 @@ class ForgeSFTRecipe(ForgeActor, ForgeEngine):
             logger.warning("Validation dataloader is empty")
             return {"val_loss": 0.0, "val_batches": 0}
 
-        next_should_break = False
-        pending_work = None  # Handle for async all_reduce
-        epoch_tensor = None  # Tensor for all_reduce result
+        should_break, pending_work, epoch_tensor = False, None, None
 
         with torch.no_grad():
             while True:
-                # Check result from PREVIOUS iteration's async all_reduce
+                # Wait for previous async all_reduce to complete
                 if pending_work is not None:
-                    pending_work.wait()  # Should be complete (or very fast) since we did compute
-                    if epoch_tensor is not None:
-                        next_should_break = epoch_tensor.item() > 0
+                    pending_work.wait()
+                    should_break = (
+                        epoch_tensor.item() > 0 if epoch_tensor is not None else False
+                    )
                     pending_work = None
 
-                # Check if we should break (based on previous iteration's check)
-                if next_should_break:
+                if should_break:
                     logger.info(
                         "Epoch completed across all ranks - stopping evaluation"
                     )
                     break
 
-                # Check optional cap on eval steps
                 if self.eval_steps > 0 and num_batches >= self.eval_steps:
                     logger.info(f"Reached eval_steps cap of {self.eval_steps}")
                     break
 
-                # Use the batch that was prefetched in previous iteration
                 batch = next_batch
 
-                # Extract epoch from current batch
+                # Track starting epoch
                 current_epoch = self._extract_epoch_from_batch(batch)
                 if current_epoch is not None and starting_epoch is None:
                     starting_epoch = current_epoch
-                    logger.info(f"Starting evaluation at epoch {starting_epoch}")
 
-                # Prefetch next batch and start async all_reduce
+                # Prefetch next batch and start async epoch check
                 try:
                     next_batch = next(val_dataloader)
-
-                    # Extract epoch from next batch
                     next_epoch = self._extract_epoch_from_batch(next_batch)
 
-                    # Start NON-BLOCKING all_reduce to check if any rank completed epoch
                     if next_epoch is not None and starting_epoch is not None:
-                        # Check if next batch indicates epoch completion
                         epoch_increment = next_epoch - starting_epoch
-
                         if torch.distributed.is_initialized():
-                            # Create tensor for all_reduce
                             epoch_tensor = torch.tensor(
                                 [epoch_increment], dtype=torch.long, device=self.device
                             )
-                            # Start async all_reduce (returns immediately, doesn't block)
                             pending_work = torch.distributed.all_reduce(
                                 epoch_tensor,
                                 op=torch.distributed.ReduceOp.MAX,
-                                async_op=True,  # NON-BLOCKING - returns immediately
+                                async_op=True,
                             )
                         else:
-                            # Single rank case - just check locally
-                            next_should_break = epoch_increment > 0
-
+                            should_break = epoch_increment > 0
                 except StopIteration:
-                    # No more batches - this is the last one
-                    next_should_break = True
+                    should_break = True
 
-                # Process current batch (while all_reduce completes in background)
-                # Move tensors to device
+                # Process current batch (overlaps with async all_reduce)
                 for k, v in batch.items():
                     if isinstance(v, torch.Tensor):
                         batch[k] = v.to(self.device)
 
                 labels = batch.pop("labels")
                 loss = self.forward_only(batch, labels)
-                # GPU compute happens here while network does all_reduce
-
                 total_loss += loss.item()
                 num_batches += 1
 
-                eval_steps_info = f"/{self.eval_steps}" if self.eval_steps > 0 else ""
-                logger.info(
-                    f"  Eval batch {num_batches}{eval_steps_info} | Loss: {loss.item():.4f}"
-                )
+                if num_batches % 10 == 0:
+                    logger.info(f"  Eval batch {num_batches} | Loss: {loss.item():.4f}")
 
-        # Set model back to train mode
         for model_part in self.model_parts:
             model_part.train()
 
         avg_loss = total_loss / max(num_batches, 1)
-
-        metrics = {
-            "val_loss": avg_loss,
-            "val_batches": num_batches,
-        }
-
-        logger.info("-" * 50)
-        logger.info(f"EVALUATION COMPLETE")
-        logger.info(f"Validation Loss: {avg_loss:.4f}")
-        logger.info(f"Batches Evaluated: {num_batches}")
+        logger.info(
+            f"EVALUATION COMPLETE | Val Loss: {avg_loss:.4f} | Batches: {num_batches}"
+        )
         logger.info("=" * 50)
-        return metrics
+
+        return {"val_loss": avg_loss, "val_batches": num_batches}
 
     @endpoint
     async def train(self) -> None:
@@ -439,8 +422,8 @@ class ForgeSFTRecipe(ForgeActor, ForgeEngine):
             self.train_step(batch)
             self.current_step += 1
 
-            # Run evaluation periodically
-            if self.current_step % self.eval_interval == 0:
+            # Run evaluation periodically if enabled
+            if self.validation_enabled and self.current_step % self.eval_interval == 0:
                 eval_metrics = await self.evaluate()
                 logger.info(f"Step {self.current_step} | Eval metrics: {eval_metrics}")
 
