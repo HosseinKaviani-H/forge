@@ -23,10 +23,12 @@ import torch
 import torchtitan.experiments.forge.train_spec as forge_train_spec
 from forge.cli.config import parse
 from forge.controller import ForgeActor
+from forge.controller.provisioner import init_provisioner, shutdown
 from forge.data.collate import collate_packed
 from forge.data.datasets.packed import PackedDataset, TextPacker
 from forge.data.datasets.sft_dataset import AlpacaToMessages, sft_iterable_dataset
 from forge.data.tokenizer import HuggingFaceModelTokenizer
+from forge.types import LauncherConfig, ProvisionerConfig
 
 from monarch.actor import current_rank, current_size, endpoint
 from omegaconf import DictConfig, OmegaConf
@@ -462,20 +464,50 @@ class ForgeSFTRecipe(ForgeActor, ForgeEngine):
 
 
 async def run(cfg: DictConfig) -> None:
-    logging.info("Spawing recipe...")
-    process_cfg = cfg.pop("processes")
-    recipe = await ForgeSFTRecipe.options(**process_cfg).as_actor(cfg)
+    """Main SFT training loop with provisioner support for multi-node training."""
+
+    # ---- Global setups ---- #
+    provisioner = None
+    if cfg.get("provisioner", None) is not None:
+        logging.info("Initializing provisioner with launcher configuration...")
+        provisioner = await init_provisioner(
+            ProvisionerConfig(launcher_config=LauncherConfig(**cfg.provisioner))
+        )
+    else:
+        logging.info("Initializing default provisioner...")
+        provisioner = await init_provisioner()
+
+    # ---- Setup SFT Recipe Actor ---- #
+    logging.info("Spawning recipe...")
+    actor_cfg = cfg.pop("actors", None)
+
+    if actor_cfg is None:
+        # Fallback to old "processes" config for backward compatibility
+        actor_cfg = cfg.pop("processes", {"procs": 8, "with_gpus": True})
+        logging.warning(
+            "Using legacy 'processes' config. Consider migrating to 'actors' config."
+        )
+
+    recipe_options = actor_cfg.get("trainer", actor_cfg)
+    recipe = await ForgeSFTRecipe.options(**recipe_options).as_actor(cfg)
 
     logging.info("Created recipe, running setup.")
     await recipe.setup.call()
 
     logging.info("Recipe has been setup. Training now.")
-    await recipe.train.call()
 
-    logging.info("Done training. Clean up")
-    await recipe.cleanup.call()
-    await recipe.mesh.stop()
-    logging.info("All done!")
+    try:
+        await recipe.train.call()
+    except KeyboardInterrupt:
+        logging.info("Training interrupted by user")
+    finally:
+        logging.info("Done training. Clean up")
+        await recipe.cleanup.call()
+        await ForgeSFTRecipe.shutdown(recipe)
+
+        # Shutdown provisioner
+        await shutdown()
+        logging.info("All done!")
 
 
 @parse
