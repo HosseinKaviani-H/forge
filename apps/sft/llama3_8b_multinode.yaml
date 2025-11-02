@@ -6,21 +6,21 @@
 comm:
   trace_buf_size: 0
 
-model_name: "Qwen/Qwen3-32B"
+model_name: "meta-llama/Meta-Llama-3.1-8B-Instruct"
 
 # Provisioner configuration for multi-node support
 provisioner:
   launcher: slurm  # Options: slurm, local, torchrun
 
 model:
-  name: qwen3
-  flavor: 32B
-  hf_assets_path: hf://${model_name}
+  name: llama3
+  flavor: 8B
+  hf_assets_path: /home/ubuntu/Hosseinkh/Meta-Llama-3.1-8B-Instruct
 
 # Resource allocation for multi-node training
 actors:
   trainer:
-    procs: 8              # Number of GPU processes per node
+    procs: 4              # Number of GPU processes per node
     hosts: 2              # Number of nodes to use (multi-node!)
     with_gpus: true
     mesh_name: trainer
@@ -54,7 +54,8 @@ parallelism:
 
 checkpoint:
   enable: true
-  initial_load_path: hf://${model_name}
+  folder: /home/ubuntu/Hosseinkh/Meta-Llama-3.1-8B-Instruct/test_eval_checkpoints
+  initial_load_path: "meta-llama/Meta-Llama-3.1-8B-Instruct"
   initial_load_in_hf: true
   last_save_in_hf: true
   interval: 500
