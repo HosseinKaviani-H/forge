@@ -1,0 +1,85 @@
+# Multi-Node SFT Configuration for Qwen3-32B
+# >>> python -m apps.sft.main --config apps/sft/qwen3_32b_multinode.yaml
+
+# TODO: required by torchtitan
+# https://github.com/pytorch/torchtitan/blob/2f1c814da071cc8ad165d00be6f9c1a66f8e1cce/torchtitan/distributed/utils.py#L265
+comm:
+  trace_buf_size: 0
+
+model_name: "meta-llama/Meta-Llama-3.1-8B-Instruct"
+
+# Provisioner configuration for multi-node support
+provisioner:
+  launcher: slurm  # Options: slurm, local, torchrun
+
+model:
+  name: llama3
+  flavor: 8B
+  hf_assets_path: /home/ubuntu/Hosseinkh/Meta-Llama-3.1-8B-Instruct
+
+# Resource allocation for multi-node training
+actors:
+  trainer:
+    procs: 4              # Number of GPU processes per node
+    hosts: 2              # Number of nodes to use (multi-node!)
+    with_gpus: true
+    mesh_name: trainer
+
+optimizer:
+  name: AdamW
+  lr: 1e-5
+  eps: 1e-8
+
+lr_scheduler:
+  warmup_steps: 200
+
+training:
+  local_batch_size: 1    # Batch size per GPU
+  seq_len: 2048
+  max_norm: 1.0
+  steps: 10000
+  compile: false
+  dataset: "c4"
+  eval_interval: 500     # Run evaluation every N steps
+  eval_steps: 100        # Number of validation batches per eval
+
+parallelism:
+  data_parallel_replicate_degree: 1
+  data_parallel_shard_degree: -1   # Auto-compute: uses all GPUs for FSDP
+  tensor_parallel_degree: 1
+  pipeline_parallel_degree: 1
+  context_parallel_degree: 1
+  expert_parallel_degree: 1
+  disable_loss_parallel: false
+
+checkpoint:
+  enable: true
+  folder: /home/ubuntu/Hosseinkh/Meta-Llama-3.1-8B-Instruct/test_eval_checkpoints
+  initial_load_path: "meta-llama/Meta-Llama-3.1-8B-Instruct"
+  initial_load_in_hf: true
+  last_save_in_hf: true
+  interval: 500
+  async_mode: "disabled"
+
+activation_checkpoint:
+  mode: selective
+  selective_ac_option: op
+
+# Optional: Metric logging configuration
+# metric_logging:
+#   wandb:
+#     project: "sft-training"
+#     group: "sft_exp_${oc.env:USER}"
+#     reduce_across_ranks: True
+#   console:
+#     reduce_across_ranks: True
+
+# Optional: Profiling configuration
+# profiling:
+#   enable_profiling: false
+
+# Optional: Metrics configuration
+# metrics:
+#   log_freq: 10
+#   enable_tensorboard: true
+#   save_tb_folder: "tb"
