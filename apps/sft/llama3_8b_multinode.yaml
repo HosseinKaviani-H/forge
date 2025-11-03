@@ -56,10 +56,10 @@ parallelism:
 
 checkpoint:
   enable: true
-  folder: /home/ubuntu/Hosseinkh/Meta-Llama-3.1-8B-Instruct/test_eval_checkpoints
+  #folder: /home/ubuntu/Hosseinkh/Meta-Llama-3.1-8B-Instruct/test_eval_checkpoints
   # To start from pre-trained HF model, uncomment these:
-  # initial_load_path: "/home/ubuntu/Hosseinkh/Meta-Llama-3.1-8B-Instruct"
-  # initial_load_in_hf: true
+  initial_load_path: "/home/ubuntu/Hosseinkh/Meta-Llama-3.1-8B-Instruct"
+  initial_load_in_hf: true
   # To resume from a saved checkpoint, use:
   # initial_load_path: "/home/ubuntu/Hosseinkh/Meta-Llama-3.1-8B-Instruct/test_eval_checkpoints/step-600"
   # initial_load_in_hf: false
