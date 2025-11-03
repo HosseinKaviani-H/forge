@@ -43,11 +43,12 @@ class Launcher(Enum):
 @dataclass
 class SlurmConfig:
     """SLURM-specific launcher configuration.
-    
+
     Args:
         cpu: Number of CPUs per node
         memory_mb: Memory in MB per node
     """
+
     cpu: int
     memory_mb: int
 
@@ -121,11 +122,15 @@ class LauncherConfig:
     job_name: str = ""
     services: dict[str, ServiceConfig] = field(default_factory=dict)
     actors: dict[str, ProcessConfig] = field(default_factory=dict)
-    slurm: SlurmConfig | None = None  # SLURM-specific config
+    slurm: SlurmConfig | dict | None = None  # SLURM-specific config
 
     def __post_init__(self):
         if isinstance(self.launcher, str):
             self.launcher = Launcher(self.launcher)
+        
+        # Convert dict to SlurmConfig if needed
+        if isinstance(self.slurm, dict):
+            self.slurm = SlurmConfig(**self.slurm)
 
 
 @dataclass
