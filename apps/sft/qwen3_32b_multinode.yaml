@@ -1,0 +1,93 @@
+# Multi-Node SFT Configuration for Qwen3-32B
+# >>> python -m apps.sft.main --config apps/sft/qwen3_32b_multinode.yaml
+
+# TODO: required by torchtitan
+# https://github.com/pytorch/torchtitan/blob/2f1c814da071cc8ad165d00be6f9c1a66f8e1cce/torchtitan/distributed/utils.py#L265
+comm:
+  trace_buf_size: 0
+
+model_name: "Qwen/Qwen3-32B"
+
+# Provisioner configuration for multi-node support
+provisioner:
+  launcher: slurm     # Options: slurm, local, torchrun
+  cpu: 128            # CPUs per node
+  memory_mb: 1655502  # Memory in MB per node
+  gpus_per_node: 4    # Number of GPUs per node
+
+# Actor configuration for multi-node training
+actors:
+  trainer:
+    procs: 4              # Number of GPU processes per node
+    hosts: 8              # Number of nodes to use (multi-node!)
+    with_gpus: true
+    mesh_name: trainer
+
+model:
+  name: qwen
+  flavor: 32B
+  hf_assets_path: /home/ubuntu/Hosseinkh/Qwen3-32B
+
+optimizer:
+  name: AdamW
+  lr: 5e-6              # Lower LR for larger model
+  eps: 1e-8
+
+lr_scheduler:
+  warmup_steps: 200
+
+training:
+  local_batch_size: 1    # Batch size per GPU (32B is large, keep at 1)
+  seq_len: 2048
+  max_norm: 1.0
+  steps: 1000
+  compile: false
+  dataset: "c4"
+  # eval_interval: 500     # Run evaluation every N steps
+  # eval_steps: 100        # Number of validation batches per eval
+
+parallelism:
+  data_parallel_replicate_degree: 1
+  data_parallel_shard_degree: -1   # Auto-compute: uses all GPUs for FSDP
+  tensor_parallel_degree: 1
+  pipeline_parallel_degree: 1
+  context_parallel_degree: 1
+  expert_parallel_degree: 1
+  disable_loss_parallel: false
+
+checkpoint:
+  enable: true
+  folder: /home/ubuntu/Hosseinkh/Qwen3-32B/checkpoints
+  # To fine-tune from pre-trained HF model (base model), uncomment these:
+  initial_load_path: "/home/ubuntu/Hosseinkh/Qwen3-32B"
+  initial_load_in_hf: true
+  # To resume from a saved checkpoint, use:
+  # initial_load_path: "/home/ubuntu/Hosseinkh/Qwen3-32B/checkpoints/step-1000"
+  # initial_load_in_hf: false
+  # To start from scratch (random initialization), comment out initial_load_path and initial_load_in_hf
+  last_save_in_hf: true
+  interval: 500
+  async_mode: "disabled"
+
+activation_checkpoint:
+  mode: selective
+  selective_ac_option: op
+
+# Optional: Metric logging configuration
+# metric_logging:
+#   wandb:
+#     project: "qwen3-32b-sft"
+#     group: "qwen3_32b_exp_${oc.env:USER}"
+#     reduce_across_ranks: True
+#   console:
+#     reduce_across_ranks: True
+
+# Optional: Profiling configuration
+# profiling:
+#   enable_profiling: false
+
+# Optional: Metrics configuration
+# metrics:
+#   log_freq: 10
+#   enable_tensorboard: true
+#   save_tb_folder: "tb"
