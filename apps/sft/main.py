@@ -116,6 +116,10 @@ class ForgeSFTRecipe(ForgeActor, ForgeEngine):
             "ROLE_NAME": "rank",
             "WORLD_SIZE": str(self._size),
             "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True",
+            # Enable HuggingFace offline mode to avoid retrying downloads
+            "HF_DATASETS_OFFLINE": "1",
+            "TRANSFORMERS_OFFLINE": "1",
+            "HF_HUB_OFFLINE": "1",
         }
         os.environ.update(env)
         logger.info("env: {}".format(env))
