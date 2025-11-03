@@ -13,15 +13,8 @@ provisioner:
   launcher: slurm  # Options: slurm, local, torchrun
   cpu: 128         # CPUs per node
   memory_mb: 1655502  # Memory in MB per node
-  # Resource allocation for multi-node training
-  actors:
-    trainer:
-      procs: 4              # Number of GPU processes per node
-      hosts: 2              # Number of nodes to use (multi-node!)
-      with_gpus: true
-      mesh_name: trainer
 
-# Actor configuration for spawning (required at top level by main.py)
+# Actor configuration for multi-node training
 actors:
   trainer:
     procs: 4              # Number of GPU processes per node

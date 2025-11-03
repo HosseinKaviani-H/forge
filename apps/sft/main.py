@@ -332,8 +332,12 @@ async def run(cfg: DictConfig) -> None:
     provisioner = None
     if cfg.get("provisioner", None) is not None:
         logging.info("Initializing provisioner with launcher configuration...")
+        # Pass top-level actors to LauncherConfig to avoid redundancy
+        launcher_config_dict = dict(cfg.provisioner)
+        if "actors" not in launcher_config_dict and "actors" in cfg:
+            launcher_config_dict["actors"] = cfg.actors
         provisioner = await init_provisioner(
-            ProvisionerConfig(launcher_config=LauncherConfig(**cfg.provisioner))
+            ProvisionerConfig(launcher_config=LauncherConfig(**launcher_config_dict))
         )
     else:
         logging.info("Initializing default provisioner...")
