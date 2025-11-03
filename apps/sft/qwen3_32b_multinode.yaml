@@ -14,14 +14,14 @@ provisioner:
   cpu: 128            # CPUs per node
   memory_mb: 1655502  # Memory in MB per node
   gpus_per_node: 4    # Number of GPUs per node
-  # Optional: Specify nodes from same rack for better network performance
-  # nodelist: "slurm-compute-node-[000-001]"  # Pick 2 consecutive nodes from same rack
+  # Optional: For 8 nodes, use SLURM_SWITCHES=2 env var to request nodes within 2 switches
+  # export SLURM_SWITCHES=2 before running training
 
 # Actor configuration for multi-node training
 actors:
   trainer:
     procs: 4              # Number of GPU processes per node
-    hosts: 2              # Number of nodes to use (multi-node!)
+    hosts: 8              # Number of nodes to use (multi-node!)
     with_gpus: true
     mesh_name: trainer
 
