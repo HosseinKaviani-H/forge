@@ -131,16 +131,59 @@ class Slurmlauncher(BaseLauncher):
         # This can be removed in the future once this has been removed.
         configure(default_transport=ChannelTransport.TcpWithHostname)
 
+    def _get_slurm_node_resources(self) -> tuple[int, int, int]:
+        """Query SLURM for node resources (CPUs, memory, GPUs).
+        
+        Returns:
+            tuple: (cpu_count, memory_mb, gpu_count)
+        """
+        try:
+            # Query SLURM for node resources using sinfo
+            # Format: %c=CPUs, %m=Memory(MB), %G=GPUs
+            result = subprocess.run(
+                ["sinfo", "-N", "-h", "-o", "%c %m %G"],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            
+            # Parse the first node's specs (assumes homogeneous cluster)
+            lines = result.stdout.strip().split('\n')
+            if not lines:
+                raise ValueError("No SLURM node information available")
+            
+            # Parse first line: "128 1655502 gpu:4(S:0)"
+            first_line = lines[0].strip().split()
+            cpu_count = int(first_line[0])
+            memory_mb = int(first_line[1])
+            
+            # Parse GPU count from format like "gpu:4(S:0)" or "gpu:4"
+            gpu_str = first_line[2] if len(first_line) > 2 else "gpu:0"
+            if ':' in gpu_str:
+                gpu_count = int(gpu_str.split(':')[1].split('(')[0])
+            else:
+                gpu_count = 0
+            
+            print(f"Detected SLURM node resources: {cpu_count} CPUs, {memory_mb} MB memory, {gpu_count} GPUs")
+            return cpu_count, memory_mb, gpu_count
+            
+        except (subprocess.CalledProcessError, ValueError, IndexError) as e:
+            # Fallback to default values if sinfo fails
+            print(f"Warning: Could not query SLURM resources ({e}), using defaults")
+            return 128, 1655502, 4  # Default fallback values
+
     async def get_allocator(self, name: str, num_hosts: int) -> tuple[Any, Any, str]:
         appdef = hyperactor.host_mesh(
             image="test", meshes=[f"{name}:{num_hosts}:gpu.small"]
         )
+        
+        # Get node resources from SLURM
+        cpu_count, memory_mb, gpu_count = self._get_slurm_node_resources()
+        
         for role in appdef.roles:
-            # Note - this is hardcoded to SLURM
-            # We got this with sinfo
-            role.resource.memMB = 1655502
-            role.resource.cpu = 128
-            role.resource.gpu = 4
+            role.resource.memMB = memory_mb
+            role.resource.cpu = cpu_count
+            role.resource.gpu = gpu_count
 
         # Note - we cannot add in an empty workspace, so we create a fake temporary one
         temp_workspace = tempfile.mkdtemp(prefix="forge_workspace_")
