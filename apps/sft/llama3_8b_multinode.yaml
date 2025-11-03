@@ -21,6 +21,14 @@ provisioner:
       with_gpus: true
       mesh_name: trainer
 
+# Actor configuration for spawning (required at top level by main.py)
+actors:
+  trainer:
+    procs: 4              # Number of GPU processes per node
+    hosts: 2              # Number of nodes to use (multi-node!)
+    with_gpus: true
+    mesh_name: trainer
+
 model:
   name: llama3
   flavor: 8B
