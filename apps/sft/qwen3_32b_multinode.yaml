@@ -28,7 +28,7 @@ actors:
     mesh_name: trainer
 
 model:
-  name: llama3  # Using llama3 train spec (Qwen has similar architecture)
+  name: qwen3
   flavor: 32B
   hf_assets_path: /home/ubuntu/Hosseinkh/Qwen3-32B
 
