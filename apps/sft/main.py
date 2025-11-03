@@ -121,13 +121,12 @@ class ForgeSFTRecipe(ForgeActor, ForgeEngine):
             "TRANSFORMERS_OFFLINE": "1",
             "HF_HUB_OFFLINE": "1",
             # NCCL configuration for multi-node communication
-            "NCCL_SOCKET_IFNAME": os.environ.get(
-                "NCCL_SOCKET_IFNAME", "enp50s0"
-            ),  # Network interface for inter-node communication
+            "NCCL_SOCKET_IFNAME": os.environ.get("NCCL_SOCKET_IFNAME", "enp50s0"),  # Network interface for inter-node communication
             "NCCL_DEBUG": os.environ.get("NCCL_DEBUG", "INFO"),  # Enable NCCL debugging
             "NCCL_IB_DISABLE": os.environ.get(
-                "NCCL_IB_DISABLE", "0"
-            ),  # Enable InfiniBand if available
+                "NCCL_IB_DISABLE", "1"
+            ),  # Disable InfiniBand (IB interfaces are DOWN on this cluster)
+            "NCCL_NET": os.environ.get("NCCL_NET", "Socket"),  # Force TCP/IP networking (not IB)
             "NCCL_TIMEOUT": os.environ.get(
                 "NCCL_TIMEOUT", "1800"
             ),  # Timeout for slow networks
