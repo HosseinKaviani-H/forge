@@ -109,6 +109,8 @@ class LauncherConfig:
     job_name: str = ""
     services: dict[str, ServiceConfig] = field(default_factory=dict)
     actors: dict[str, ProcessConfig] = field(default_factory=dict)
+    cpu: int = 128  # CPUs per node
+    memory_mb: int = 1655502  # Memory in MB per node
 
     def __post_init__(self):
         if isinstance(self.launcher, str):
