@@ -94,10 +94,21 @@ class ForgeSFTRecipe(ForgeActor, ForgeEngine):
         be explicit for now.
 
         """
+        # Calculate local rank - rank within the node
+        # For multi-node setups, LOCAL_RANK should be rank % gpus_per_node
+        # Get the number of processes per node from current_size
+        rank_info = current_rank()
+        size_info = current_size()
+        
+        # Get the local rank from the proc mesh structure
+        # The last dimension in the mesh typically represents processes per node
+        local_world_size = list(size_info.values())[-1] if size_info else self._size
+        local_rank = self._rank % local_world_size
+        
         env = {
             "RANK": str(self._rank),
-            "LOCAL_RANK": str(self._rank),
-            "LOCAL_WORLD_SIZE": str(self._size),
+            "LOCAL_RANK": str(local_rank),
+            "LOCAL_WORLD_SIZE": str(local_world_size),
             "GROUP_RANK": str(self._size),
             "GROUP_WORLD_SIZE": str(self._size),
             "ROLE_RANK": str(self._rank),
