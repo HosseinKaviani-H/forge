@@ -139,13 +139,22 @@ class Slurmlauncher(BaseLauncher):
             image="test", meshes=[f"{name}:{num_hosts}:gpu.small"]
         )
         
-        # Get node resources from config
-        # The GPU count is derived from the procs configuration in actors
-        cpu_count = self.cfg.cpu if self.cfg else 128
-        memory_mb = self.cfg.memory_mb if self.cfg else 1655502
+        # Get node resources from config - these are required for SLURM
+        if not self.cfg or self.cfg.cpu is None or self.cfg.memory_mb is None:
+            raise ValueError(
+                "SLURM launcher requires 'cpu' and 'memory_mb' to be specified in the provisioner config. "
+                "Add these to your YAML file:\n"
+                "provisioner:\n"
+                "  launcher: slurm\n"
+                "  cpu: <CPUs per node>\n"
+                "  memory_mb: <Memory in MB per node>"
+            )
+        
+        cpu_count = self.cfg.cpu
+        memory_mb = self.cfg.memory_mb
         
         # Get GPU count from actors config
-        gpu_count = 4  # Default
+        gpu_count = 4  # Default fallback
         if self.cfg and self.cfg.actors:
             for actor_config in self.cfg.actors.values():
                 if actor_config.with_gpus:
