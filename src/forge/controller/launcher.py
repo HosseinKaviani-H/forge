@@ -138,41 +138,23 @@ class Slurmlauncher(BaseLauncher):
         appdef = hyperactor.host_mesh(
             image="test", meshes=[f"{name}:{num_hosts}:gpu.small"]
         )
-        
-        # Get SLURM-specific resources from nested config
-        if not self.cfg or not self.cfg.slurm:
-            raise ValueError(
-                "SLURM launcher requires 'slurm' config section to be specified. "
-                "Add this to your YAML file:\n"
-                "provisioner:\n"
-                "  launcher: slurm\n"
-                "  slurm:\n"
-                "    cpu: <CPUs per node>\n"
-                "    memory_mb: <Memory in MB per node>"
-            )
-        
-        cpu_count = self.cfg.slurm.cpu
-        memory_mb = self.cfg.slurm.memory_mb
-        
+
+        # Get node resources from config
+        # The GPU count is derived from the procs configuration in actors
+        cpu_count = self.cfg.cpu
+        memory_mb = self.cfg.memory_mb
+
         # Get GPU count from actors config
-        gpu_count = None
-        if self.cfg.actors:
+
+        if self.cfg and self.cfg.actors:
             for actor_config in self.cfg.actors.values():
                 if actor_config.with_gpus:
                     gpu_count = actor_config.procs
                     break
-        
-        if gpu_count is None:
-            raise ValueError(
-                "SLURM launcher requires at least one actor with 'with_gpus: true' and 'procs' specified. "
-                "Add this to your YAML file:\n"
-                "actors:\n"
-                "  trainer:\n"
-                "    procs: <Number of GPUs per node>\n"
-                "    with_gpus: true"
-            )
-        
-        print(f"Using SLURM node resources from config: {cpu_count} CPUs, {memory_mb} MB memory, {gpu_count} GPUs")
+
+        print(
+            f"Using SLURM node resources from config: {cpu_count} CPUs, {memory_mb} MB memory, {gpu_count} GPUs"
+        )
 
         for role in appdef.roles:
             role.resource.memMB = memory_mb

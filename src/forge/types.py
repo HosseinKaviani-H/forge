@@ -41,19 +41,6 @@ class Launcher(Enum):
 
 
 @dataclass
-class SlurmConfig:
-    """SLURM-specific launcher configuration.
-
-    Args:
-        cpu: Number of CPUs per node
-        memory_mb: Memory in MB per node
-    """
-
-    cpu: int
-    memory_mb: int
-
-
-@dataclass
 class ProcessConfig:
     """A configuration for allocating Monarch ProcMeshes.
 
@@ -122,15 +109,12 @@ class LauncherConfig:
     job_name: str = ""
     services: dict[str, ServiceConfig] = field(default_factory=dict)
     actors: dict[str, ProcessConfig] = field(default_factory=dict)
-    slurm: SlurmConfig | dict | None = None  # SLURM-specific config
+    cpu: int = 128  # CPUs per node
+    memory_mb: int = 1655502  # Memory in MB per node
 
     def __post_init__(self):
         if isinstance(self.launcher, str):
             self.launcher = Launcher(self.launcher)
-        
-        # Convert dict to SlurmConfig if needed
-        if isinstance(self.slurm, dict):
-            self.slurm = SlurmConfig(**self.slurm)
 
 
 @dataclass

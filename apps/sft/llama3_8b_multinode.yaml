@@ -11,9 +11,8 @@ model_name: "meta-llama/Meta-Llama-3.1-8B-Instruct"
 # Provisioner configuration for multi-node support
 provisioner:
   launcher: slurm  # Options: slurm, local, torchrun
-  slurm:
-    cpu: 128              # CPUs per node
-    memory_mb: 1655502    # Memory in MB per node
+  cpu: 128         # CPUs per node
+  memory_mb: 1655502  # Memory in MB per node
 
 model:
   name: llama3
@@ -40,7 +39,7 @@ training:
   local_batch_size: 1    # Batch size per GPU
   seq_len: 2048
   max_norm: 1.0
-  steps: 600
+  steps: 10000
   compile: false
   dataset: "c4"
   eval_interval: 500     # Run evaluation every N steps
@@ -57,13 +56,9 @@ parallelism:
 
 checkpoint:
   enable: true
-  #folder: /home/ubuntu/Hosseinkh/Meta-Llama-3.1-8B-Instruct/test_eval_checkpoints
-  # To start from pre-trained HF model, uncomment these:
-  initial_load_path: "/home/ubuntu/Hosseinkh/Meta-Llama-3.1-8B-Instruct"
-  initial_load_in_hf: true
-  # To resume from a saved checkpoint, use:
-  # initial_load_path: "/home/ubuntu/Hosseinkh/Meta-Llama-3.1-8B-Instruct/test_eval_checkpoints/step-600"
-  # initial_load_in_hf: false
+  folder: /home/ubuntu/Hosseinkh/Meta-Llama-3.1-8B-Instruct/test_eval_checkpoints
+  # initial_load_path: "meta-llama/Meta-Llama-3.1-8B-Instruct"  # Comment out for fresh training
+  # initial_load_in_hf: true
   last_save_in_hf: true
   interval: 500
   async_mode: "disabled"
