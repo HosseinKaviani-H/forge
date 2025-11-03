@@ -139,27 +139,30 @@ class Slurmlauncher(BaseLauncher):
             image="test", meshes=[f"{name}:{num_hosts}:gpu.small"]
         )
         
-        # Get node resources from config - these are required for SLURM
-        if not self.cfg or self.cfg.cpu is None or self.cfg.memory_mb is None:
-            raise ValueError(
-                "SLURM launcher requires 'cpu' and 'memory_mb' to be specified in the provisioner config. "
-                "Add these to your YAML file:\n"
-                "provisioner:\n"
-                "  launcher: slurm\n"
-                "  cpu: <CPUs per node>\n"
-                "  memory_mb: <Memory in MB per node>"
-            )
+        # Get node resources from actors config - these are required for SLURM
+        cpu_count = None
+        memory_mb = None
+        gpu_count = None
         
-        cpu_count = self.cfg.cpu
-        memory_mb = self.cfg.memory_mb
-        
-        # Get GPU count from actors config
-        gpu_count = 4  # Default fallback
         if self.cfg and self.cfg.actors:
             for actor_config in self.cfg.actors.values():
                 if actor_config.with_gpus:
                     gpu_count = actor_config.procs
+                    cpu_count = actor_config.cpu_per_node
+                    memory_mb = actor_config.memory_mb_per_node
                     break
+        
+        # Validate that required resources are specified
+        if cpu_count is None or memory_mb is None or gpu_count is None:
+            raise ValueError(
+                "SLURM launcher requires 'cpu_per_node' and 'memory_mb_per_node' to be specified in actors config. "
+                "Add these to your YAML file:\n"
+                "actors:\n"
+                "  trainer:\n"
+                "    procs: <Number of GPUs per node>\n"
+                "    cpu_per_node: <CPUs per node>\n"
+                "    memory_mb_per_node: <Memory in MB per node>"
+            )
         
         print(f"Using SLURM node resources from config: {cpu_count} CPUs, {memory_mb} MB memory, {gpu_count} GPUs")
         

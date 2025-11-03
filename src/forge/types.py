@@ -51,6 +51,8 @@ class ProcessConfig:
             If this is set to None, it will use the local host.
             If this is set to a positive integer, it will run on a remote host.
         mesh_name (str | None, optional): Name of the mesh to use for the proc_mesh.
+        cpu_per_node (int | None, optional): CPUs per node (required for SLURM).
+        memory_mb_per_node (int | None, optional): Memory in MB per node (required for SLURM).
 
     """
 
@@ -58,6 +60,8 @@ class ProcessConfig:
     with_gpus: bool = False
     hosts: int | None = None
     mesh_name: str | None = None
+    cpu_per_node: int | None = None
+    memory_mb_per_node: int | None = None
 
 
 @dataclass
@@ -109,8 +113,6 @@ class LauncherConfig:
     job_name: str = ""
     services: dict[str, ServiceConfig] = field(default_factory=dict)
     actors: dict[str, ProcessConfig] = field(default_factory=dict)
-    cpu: int | None = None  # CPUs per node (required for SLURM)
-    memory_mb: int | None = None  # Memory in MB per node (required for SLURM)
 
     def __post_init__(self):
         if isinstance(self.launcher, str):
