@@ -140,41 +140,27 @@ class Slurmlauncher(BaseLauncher):
         )
 
         # Validate that required SLURM resources are specified in config
-        if not self.cfg or self.cfg.cpu is None or self.cfg.memory_mb is None:
+        if (not self.cfg or self.cfg.cpu is None or self.cfg.memory_mb is None 
+            or self.cfg.gpus_per_node is None):
             raise ValueError(
-                "SLURM launcher requires 'cpu' and 'memory_mb' to be specified in the provisioner config.\n"
+                "SLURM launcher requires 'cpu', 'memory_mb', and 'gpus_per_node' to be specified in the provisioner config.\n"
                 "Add these to your YAML file:\n\n"
                 "provisioner:\n"
                 "  launcher: slurm\n"
                 "  cpu: <CPUs per node>\n"
-                "  memory_mb: <Memory in MB per node>\n\n"
+                "  memory_mb: <Memory in MB per node>\n"
+                "  gpus_per_node: <Number of GPUs per node>\n\n"
                 "Example:\n"
                 "provisioner:\n"
                 "  launcher: slurm\n"
                 "  cpu: 128\n"
-                "  memory_mb: 1655502"
+                "  memory_mb: 1655502\n"
+                "  gpus_per_node: 4"
             )
 
         cpu_count = self.cfg.cpu
         memory_mb = self.cfg.memory_mb
-
-        # Get GPU count from actors config
-        gpu_count = None
-        if self.cfg.actors:
-            for actor_config in self.cfg.actors.values():
-                if actor_config.with_gpus:
-                    gpu_count = actor_config.procs
-                    break
-
-        if gpu_count is None:
-            raise ValueError(
-                "SLURM launcher requires at least one actor with 'with_gpus: true' and 'procs' specified.\n"
-                "Add this to your YAML file:\n\n"
-                "actors:\n"
-                "  trainer:\n"
-                "    procs: <Number of GPUs per node>\n"
-                "    with_gpus: true"
-            )
+        gpu_count = self.cfg.gpus_per_node
 
         print(
             f"Using SLURM node resources from config: {cpu_count} CPUs, {memory_mb} MB memory, {gpu_count} GPUs"

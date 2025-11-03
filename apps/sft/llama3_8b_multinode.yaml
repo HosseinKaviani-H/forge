@@ -10,19 +10,12 @@ model_name: "meta-llama/Meta-Llama-3.1-8B-Instruct"
 
 # Provisioner configuration for multi-node support
 provisioner:
-  launcher: slurm  # Options: slurm, local, torchrun
-  cpu: 128         # CPUs per node
+  launcher: slurm     # Options: slurm, local, torchrun
+  cpu: 128            # CPUs per node
   memory_mb: 1655502  # Memory in MB per node
-  # NOTE: actors must be defined here for LauncherConfig (GPU count for SLURM)
-  actors:
-    trainer:
-      procs: 4              # Number of GPU processes per node
-      hosts: 2              # Number of nodes to use (multi-node!)
-      with_gpus: true
-      mesh_name: trainer
+  gpus_per_node: 4    # Number of GPUs per node
 
-# NOTE: actors must ALSO be defined here for spawning the recipe actor
-# This redundancy is required because main.py passes only cfg.provisioner to LauncherConfig
+# Actor configuration for multi-node training
 actors:
   trainer:
     procs: 4              # Number of GPU processes per node
