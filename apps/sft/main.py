@@ -99,12 +99,12 @@ class ForgeSFTRecipe(ForgeActor, ForgeEngine):
         # Get the number of processes per node from current_size
         rank_info = current_rank()
         size_info = current_size()
-        
+
         # Get the local rank from the proc mesh structure
         # The last dimension in the mesh typically represents processes per node
         local_world_size = list(size_info.values())[-1] if size_info else self._size
         local_rank = self._rank % local_world_size
-        
+
         env = {
             "RANK": str(self._rank),
             "LOCAL_RANK": str(local_rank),
@@ -332,12 +332,8 @@ async def run(cfg: DictConfig) -> None:
     provisioner = None
     if cfg.get("provisioner", None) is not None:
         logging.info("Initializing provisioner with launcher configuration...")
-        # Pass top-level actors to LauncherConfig to avoid redundancy
-        launcher_config_dict = dict(cfg.provisioner)
-        if "actors" not in launcher_config_dict and "actors" in cfg:
-            launcher_config_dict["actors"] = cfg.actors
         provisioner = await init_provisioner(
-            ProvisionerConfig(launcher_config=LauncherConfig(**launcher_config_dict))
+            ProvisionerConfig(launcher_config=LauncherConfig(**cfg.provisioner))
         )
     else:
         logging.info("Initializing default provisioner...")
