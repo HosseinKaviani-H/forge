@@ -40,7 +40,7 @@ training:
   local_batch_size: 1    # Batch size per GPU
   seq_len: 2048
   max_norm: 1.0
-  steps: 10000
+  steps: 600
   compile: false
   dataset: "c4"
   eval_interval: 500     # Run evaluation every N steps
