@@ -139,33 +139,41 @@ class Slurmlauncher(BaseLauncher):
             image="test", meshes=[f"{name}:{num_hosts}:gpu.small"]
         )
         
-        # Get node resources from actors config - these are required for SLURM
-        cpu_count = None
-        memory_mb = None
-        gpu_count = None
+        # Get SLURM-specific resources from nested config
+        if not self.cfg or not self.cfg.slurm:
+            raise ValueError(
+                "SLURM launcher requires 'slurm' config section to be specified. "
+                "Add this to your YAML file:\n"
+                "provisioner:\n"
+                "  launcher: slurm\n"
+                "  slurm:\n"
+                "    cpu: <CPUs per node>\n"
+                "    memory_mb: <Memory in MB per node>"
+            )
         
-        if self.cfg and self.cfg.actors:
+        cpu_count = self.cfg.slurm.cpu
+        memory_mb = self.cfg.slurm.memory_mb
+        
+        # Get GPU count from actors config
+        gpu_count = None
+        if self.cfg.actors:
             for actor_config in self.cfg.actors.values():
                 if actor_config.with_gpus:
                     gpu_count = actor_config.procs
-                    cpu_count = actor_config.cpu_per_node
-                    memory_mb = actor_config.memory_mb_per_node
                     break
         
-        # Validate that required resources are specified
-        if cpu_count is None or memory_mb is None or gpu_count is None:
+        if gpu_count is None:
             raise ValueError(
-                "SLURM launcher requires 'cpu_per_node' and 'memory_mb_per_node' to be specified in actors config. "
-                "Add these to your YAML file:\n"
+                "SLURM launcher requires at least one actor with 'with_gpus: true' and 'procs' specified. "
+                "Add this to your YAML file:\n"
                 "actors:\n"
                 "  trainer:\n"
                 "    procs: <Number of GPUs per node>\n"
-                "    cpu_per_node: <CPUs per node>\n"
-                "    memory_mb_per_node: <Memory in MB per node>"
+                "    with_gpus: true"
             )
         
         print(f"Using SLURM node resources from config: {cpu_count} CPUs, {memory_mb} MB memory, {gpu_count} GPUs")
-        
+
         for role in appdef.roles:
             role.resource.memMB = memory_mb
             role.resource.cpu = cpu_count
