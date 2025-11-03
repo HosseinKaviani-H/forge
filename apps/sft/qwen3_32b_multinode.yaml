@@ -14,8 +14,10 @@ provisioner:
   cpu: 128            # CPUs per node
   memory_mb: 1655502  # Memory in MB per node
   gpus_per_node: 4    # Number of GPUs per node
-  # Optional: For 8 nodes, use SLURM_SWITCHES=2 env var to request nodes within 2 switches
-  # export SLURM_SWITCHES=2 before running training
+  # Optional: For 8 nodes spread across racks:
+  # - SLURM_SWITCHES=4: allows 2 nodes from each of 4 racks (2x4=8 nodes)
+  # - SLURM_SWITCHES=2: forces 4 nodes from each of 2 racks (4x2=8 nodes)
+  # export SLURM_SWITCHES=4 before running training for balanced rack distribution
 
 # Actor configuration for multi-node training
 actors:
