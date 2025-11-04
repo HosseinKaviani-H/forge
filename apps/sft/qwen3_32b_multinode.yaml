@@ -76,14 +76,14 @@ activation_checkpoint:
   mode: selective
   selective_ac_option: op
 
-# Optional: Metric logging configuration
-# metric_logging:
-#   wandb:
-#     project: "qwen3-32b-sft"
-#     group: "qwen3_32b_exp_${oc.env:USER}"
-#     reduce_across_ranks: True
-#   console:
-#     reduce_across_ranks: True
+# Metric logging configuration
+metric_logging:
+  wandb:
+    project: "qwen3-32b-sft"                      # Main project name
+    group: "32b_8node_${oc.env:USER}"            # Group by model size, nodes, and user
+    logging_mode: global_reduce                   # Average metrics across all 32 GPUs
+  # console:
+  #   reduce_across_ranks: True
 
 # Optional: Profiling configuration
 # profiling:
