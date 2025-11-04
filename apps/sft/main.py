@@ -117,15 +117,11 @@ class ForgeSFTRecipe(ForgeActor, ForgeEngine):
             "ROLE_NAME": "rank",
             "WORLD_SIZE": str(self._size),
             "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True",
-            # Enable HuggingFace offline mode to avoid retrying downloads - this is in case SLURM doesn't have access to the internet
-            "HF_DATASETS_OFFLINE": "1",
-            "TRANSFORMERS_OFFLINE": "1",
-            "HF_HUB_OFFLINE": "1",
             # NCCL configuration for multi-node communication
             "NCCL_SOCKET_IFNAME": os.environ.get(
-                "NCCL_SOCKET_IFNAME", "enp50s0"
-            ),  # Network interface for inter-node communication
-            "NCCL_DEBUG": os.environ.get("NCCL_DEBUG", "INFO"),  # Enable NCCL debugging
+                "NCCL_SOCKET_IFNAME", "eth0,eno1,enp0s31f6,enp50s0"
+            ),  # Try multiple network interfaces
+            "NCCL_DEBUG": os.environ.get("NCCL_DEBUG", "WARN"),  # Reduce debug verbosity
             "NCCL_IB_DISABLE": os.environ.get(
                 "NCCL_IB_DISABLE", "1"
             ),  # Disable InfiniBand (IB interfaces are DOWN on this cluster)
@@ -133,8 +129,13 @@ class ForgeSFTRecipe(ForgeActor, ForgeEngine):
                 "NCCL_NET", "Socket"
             ),  # Force TCP/IP networking (not IB)
             "NCCL_TIMEOUT": os.environ.get(
-                "NCCL_TIMEOUT", "1800"
-            ),  # Timeout for slow networks
+                "NCCL_TIMEOUT", "3600"
+            ),  # Increase timeout to 1 hour for slow networks
+            "NCCL_BLOCKING_WAIT": "1",  # Use blocking wait for reliability
+            # Disable PyTorch NCCL watchdog to prevent false positive hangs
+            "TORCH_NCCL_ENABLE_MONITORING": "0",
+            "TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC": "3600",  # 1 hour timeout
+            "TORCH_NCCL_ASYNC_ERROR_HANDLING": "1",  # Better error handling
         }
         os.environ.update(env)
         logger.info("env: {}".format(env))
