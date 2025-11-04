@@ -23,7 +23,7 @@ provisioner:
 actors:
   trainer:
     procs: 4              # Number of GPU processes per node
-    hosts: 8              # Number of nodes to use (multi-node!)
+    hosts: 32              # Number of nodes to use (multi-node!)
     with_gpus: true
     mesh_name: trainer
 
