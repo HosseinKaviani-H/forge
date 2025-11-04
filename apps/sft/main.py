@@ -27,6 +27,7 @@ from forge.data.collate import collate_packed
 from forge.data.datasets.packed import PackedDataset, TextPacker
 from forge.data.datasets.sft_dataset import AlpacaToMessages, sft_iterable_dataset
 from forge.data.tokenizer import HuggingFaceModelTokenizer
+from forge.observability import get_or_create_metric_logger, record_metric, Reduce
 from forge.types import LauncherConfig, ProvisionerConfig
 from forge.util.config import parse
 
@@ -116,7 +117,7 @@ class ForgeSFTRecipe(ForgeActor, ForgeEngine):
             "ROLE_NAME": "rank",
             "WORLD_SIZE": str(self._size),
             "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True",
-            # Enable HuggingFace offline mode to avoid retrying downloads
+            # Enable HuggingFace offline mode to avoid retrying downloads - this is in case SLURM doesn't have access to the internet
             "HF_DATASETS_OFFLINE": "1",
             "TRANSFORMERS_OFFLINE": "1",
             "HF_HUB_OFFLINE": "1",
@@ -138,21 +139,31 @@ class ForgeSFTRecipe(ForgeActor, ForgeEngine):
         os.environ.update(env)
         logger.info("env: {}".format(env))
 
+    async def setup_metric_logger(self):
+        """Initialization happens in the main process. Here we just retrieve it"""
+        mlogger = await get_or_create_metric_logger()
+        return mlogger
+
+    def record_batch_metrics(self, data_metrics: list):
+        """Since the dataloader creates new processes, we dont call `record_metric` in the dataset.
+        Instead, pop the metrics from the batch and record them here."""
+        for metric in data_metrics:
+            record_metric(metric.key, metric.value, metric.reduction)
+
     @endpoint
     async def setup(self):
-        # Get dataset path from config or use default
-        # TODO: Make this configurable via YAML config
-        dataset_path = getattr(self.job_config, "dataset_path", "yahma/alpaca-cleaned")
-        
         # Setup training data (first 90% of train split)
         self.train_dataloader = self.setup_data(
-            dataset_path=dataset_path, dataset_split="train[:90%]"
+            dataset_path="yahma/alpaca-cleaned", dataset_split="train[:90%]"
         )
 
         # Setup validation data (last 10% of train split)
         self.val_dataloader = self.setup_data(
-            dataset_path=dataset_path, dataset_split="train[90%:]"
+            dataset_path="yahma/alpaca-cleaned", dataset_split="train[90%:]"
         )
+
+        # Initialize metric logger
+        self.mlogger = await self.setup_metric_logger()
 
         # Load checkpoint if resuming
         self.checkpointer.load(step=self.current_step)
@@ -160,14 +171,7 @@ class ForgeSFTRecipe(ForgeActor, ForgeEngine):
     def setup_data(
         self, dataset_path: str = "yahma/alpaca-cleaned", dataset_split: str = "train"
     ):
-        """Setup data with configurable dataset path and split.
-        
-        Args:
-            dataset_path: Path to dataset. Can be:
-                - HuggingFace Hub ID (e.g., "yahma/alpaca-cleaned") - requires internet
-                - Local directory path (e.g., "/path/to/dataset") - for offline use
-            dataset_split: Dataset split to use (e.g., "train", "train[:90%]")
-        """
+        """Setup data with configurable dataset path and split."""
         print(os.path.join(self.job_config.model.hf_assets_path, "tokenizer.json"))
         tokenizer = HuggingFaceModelTokenizer(
             tokenizer_json_path=os.path.join(
@@ -312,8 +316,12 @@ class ForgeSFTRecipe(ForgeActor, ForgeEngine):
     def train_step(self, batch) -> None:
         labels = batch.pop("labels")
         loss = self.forward_backward(batch, labels)
+        loss = loss.item()
 
+        # Record loss metric
+        record_metric("ForgeSFTRecipe/train_step/loss", loss, Reduce.MEAN)
         logger.info(f"{self.current_step} / {self.num_training_steps}|Loss: {loss}")
+
         self.optimizers.step()
         self.lr_schedulers.step()
 
@@ -326,12 +334,23 @@ class ForgeSFTRecipe(ForgeActor, ForgeEngine):
 
         while self.current_step < self.num_training_steps:
             batch = next(dataloader)
+
+            # Pop and record metrics from batch before moving to device
+            self.record_batch_metrics(batch.pop("metrics", []))
+            record_metric("ForgeSFTRecipe/train/step", self.current_step, Reduce.MEAN)
+
             # Move tensors to the appropriate device
             for k, v in batch.items():
                 if isinstance(v, torch.Tensor):
                     batch[k] = v.to(self.device)  # TODO: hardcoded for now
+
             self.train_step(batch)
             self.current_step += 1
+
+            # Flush metrics
+            if self._rank == 0:
+                logger.debug(f"Flushing metrics at step {self.current_step}")
+                await self.mlogger.flush.call_one(global_step=self.current_step)
 
             # Save checkpoints
             self.checkpointer.save(
@@ -346,8 +365,8 @@ class ForgeSFTRecipe(ForgeActor, ForgeEngine):
             torch.distributed.barrier()  # Wait for all processes
         if self.checkpointer:
             self.checkpointer.close()
-        if self.metric_logger:
-            self.metric_logger.close()
+        if getattr(self, "mlogger", None):
+            await self.mlogger.shutdown.call_one()
 
     def __repr__(self) -> str:
         return "Trainer"
@@ -366,6 +385,11 @@ async def run(cfg: DictConfig) -> None:
     else:
         logging.info("Initializing default provisioner...")
         provisioner = await init_provisioner()
+
+    # ---- Initialize metric logger in main process ---- #
+    metric_logging_cfg = cfg.get("metric_logging", {})
+    mlogger = await get_or_create_metric_logger(process_name="Controller")
+    await mlogger.init_backends.call_one(metric_logging_cfg)
 
     # ---- Setup SFT Recipe Actor ---- #
     logging.info("Spawning recipe...")
