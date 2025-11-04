@@ -81,12 +81,10 @@ class ForgeSFTRecipe(ForgeActor, ForgeEngine):
         self._rank = current_rank().rank
         self._size = math.prod(current_size().values())
 
-        # Get GPUs per node from config (actors.trainer.procs)
-        gpus_per_node = config.get("actors", {}).get("trainer", {}).get("procs", None)
-        self._init_dist(gpus_per_node)
+        self._init_dist()
         super().__init__(job_config)
 
-    def _init_dist(self, gpus_per_node: int = None):
+    def _init_dist(self):
         """Initializes torch distributed.
 
         torchrun normally hands this, but we need to do it ourselves
@@ -95,23 +93,16 @@ class ForgeSFTRecipe(ForgeActor, ForgeEngine):
         We should consider putting this into ForgeActor, but having this
         be explicit for now.
 
-        Args:
-            gpus_per_node: Number of GPUs per node from config (actors.trainer.procs).
-                           If None, falls back to extracting from size_info.
         """
         # Calculate local rank - rank within the node
         # For multi-node setups, LOCAL_RANK should be rank % gpus_per_node
-        
-        if gpus_per_node is not None:
-            # Use GPUs per node directly from config
-            local_world_size = gpus_per_node
-        else:
-            # Fallback: extract from Monarch's size_info
-            size_info = current_size()
-            local_world_size = (
-                size_info.get("procs", self._size) if size_info else self._size
-            )
-        
+        size_info = current_size()
+
+        # Get GPUs per node directly from 'procs' key (processes per host)
+        # size_info = {'hosts': 8, 'procs': 4} for 8 nodes with 4 GPUs each
+        local_world_size = (
+            size_info.get("procs", self._size) if size_info else self._size
+        )
         local_rank = self._rank % local_world_size
 
         env = {
@@ -339,6 +330,9 @@ class ForgeSFTRecipe(ForgeActor, ForgeEngine):
 
     @endpoint
     async def cleanup(self) -> None:
+        # Add barrier to ensure all ranks reach this point before closing resources
+        if torch.distributed.is_initialized():
+            torch.distributed.barrier()  # Wait for all processes
         if self.checkpointer:
             self.checkpointer.close()
         if self.metric_logger:
