@@ -194,7 +194,7 @@ class ForgeSFTRecipe(ForgeActor, ForgeEngine):
             getattr(data_config, "num_shards_per_rank", 64) if data_config else 64
         )
         num_dataloader_workers = (
-            getattr(data_config, "num_dataloader_workers", 1) if data_config else 1
+            getattr(data_config, "num_dataloader_workers", 0) if data_config else 0
         )
 
         dataset = sft_iterable_dataset(
@@ -203,7 +203,6 @@ class ForgeSFTRecipe(ForgeActor, ForgeEngine):
             path=dataset_path,
             split=dataset_split,
             num_shards_per_rank=num_shards_per_rank,
-            num_dataloader_workers=num_dataloader_workers,
         )
         packer = TextPacker(padding_idx=0)
         dataset = PackedDataset(
@@ -214,6 +213,7 @@ class ForgeSFTRecipe(ForgeActor, ForgeEngine):
         dataloader = StatefulDataLoader(
             dataset=dataset,
             batch_size=self.job_config.training.local_batch_size,
+            num_workers=num_dataloader_workers,
             collate_fn=partial(
                 collate_packed, mask_fn=packer.create_block_mask, device=self.device
             ),
