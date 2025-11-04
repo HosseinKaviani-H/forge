@@ -53,7 +53,7 @@ training:
 # For 128 GPUs with 5176 samples: 128 × 8 = 1024 shards < 5176 ✅
 data:
   num_shards_per_rank: 8   # Default is 64, reduce to 8 for small datasets
-  num_dataloader_workers: 1
+  num_dataloader_workers: 0  # 0 = no worker processes (avoid CUDA fork issues)
 
 
 parallelism:
