@@ -22,8 +22,8 @@ provisioner:
 # Actor configuration for multi-node training
 actors:
   trainer:
-    procs: 4              # Number of GPU processes per node
-    hosts: 32              # Number of nodes to use (multi-node!)
+    procs: 4              # Number of GPU processes per node (4 GPUs per node)
+    hosts: 8              # Number of nodes to use (8 nodes × 4 GPUs = 32 total GPUs)
     with_gpus: true
     mesh_name: trainer
 
@@ -41,7 +41,7 @@ lr_scheduler:
   warmup_steps: 200
 
 training:
-  local_batch_size: 8    # Batch size per GPU (32B is large, keep at 1)
+  local_batch_size: 1    # Batch size per GPU (32B model is very large!)
   seq_len: 2048
   max_norm: 1.0
   steps: 5000
@@ -51,8 +51,8 @@ training:
 
 parallelism:
   data_parallel_replicate_degree: 1
-  data_parallel_shard_degree: 32   # Auto-compute: uses all GPUs for FSDP
-  tensor_parallel_degree: 4
+  data_parallel_shard_degree: 8    # FSDP shards: 8 shards × 4 TP = 32 total GPUs
+  tensor_parallel_degree: 4        # Split model across 4 GPUs within a node
   pipeline_parallel_degree: 1
   context_parallel_degree: 1
   expert_parallel_degree: 1
