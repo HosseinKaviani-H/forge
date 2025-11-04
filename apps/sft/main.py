@@ -140,14 +140,18 @@ class ForgeSFTRecipe(ForgeActor, ForgeEngine):
 
     @endpoint
     async def setup(self):
+        # Get dataset path from config or use default
+        # TODO: Make this configurable via YAML config
+        dataset_path = getattr(self.job_config, "dataset_path", "yahma/alpaca-cleaned")
+        
         # Setup training data (first 90% of train split)
         self.train_dataloader = self.setup_data(
-            dataset_path="yahma/alpaca-cleaned", dataset_split="train[:90%]"
+            dataset_path=dataset_path, dataset_split="train[:90%]"
         )
 
         # Setup validation data (last 10% of train split)
         self.val_dataloader = self.setup_data(
-            dataset_path="yahma/alpaca-cleaned", dataset_split="train[90%:]"
+            dataset_path=dataset_path, dataset_split="train[90%:]"
         )
 
         # Load checkpoint if resuming
@@ -156,7 +160,14 @@ class ForgeSFTRecipe(ForgeActor, ForgeEngine):
     def setup_data(
         self, dataset_path: str = "yahma/alpaca-cleaned", dataset_split: str = "train"
     ):
-        """Setup data with configurable dataset path and split."""
+        """Setup data with configurable dataset path and split.
+        
+        Args:
+            dataset_path: Path to dataset. Can be:
+                - HuggingFace Hub ID (e.g., "yahma/alpaca-cleaned") - requires internet
+                - Local directory path (e.g., "/path/to/dataset") - for offline use
+            dataset_split: Dataset split to use (e.g., "train", "train[:90%]")
+        """
         print(os.path.join(self.job_config.model.hf_assets_path, "tokenizer.json"))
         tokenizer = HuggingFaceModelTokenizer(
             tokenizer_json_path=os.path.join(
