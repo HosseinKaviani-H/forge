@@ -23,7 +23,7 @@ provisioner:
 actors:
   trainer:
     procs: 4              # Number of GPU processes per node (4 GPUs per node)
-    hosts: 8              # Number of nodes to use (8 nodes × 4 GPUs = 32 total GPUs)
+    hosts: 32             # Number of nodes to use (32 nodes × 4 GPUs = 128 total GPUs)
     with_gpus: true
     mesh_name: trainer
 
@@ -41,17 +41,24 @@ lr_scheduler:
   warmup_steps: 200
 
 training:
-  local_batch_size: 1    # Batch size per GPU (32B model is very large!)
+  local_batch_size: 8    # Batch size per GPU for better convergence
   seq_len: 2048
   max_norm: 1.0
   steps: 5000
   compile: false
   dataset: "c4"
 
+# Data loading configuration
+# Fix: Reduce num_shards_per_rank to avoid "number of shards > dataset size" error
+# For 128 GPUs with 5176 samples: 128 × 8 = 1024 shards < 5176 ✅
+data:
+  num_shards_per_rank: 8   # Default is 64, reduce to 8 for small datasets
+  num_dataloader_workers: 1
+
 
 parallelism:
   data_parallel_replicate_degree: 1
-  data_parallel_shard_degree: 8    # FSDP shards: 8 shards × 4 TP = 32 total GPUs
+  data_parallel_shard_degree: 32   # FSDP shards: 32 shards × 4 TP = 128 total GPUs
   tensor_parallel_degree: 4        # Split model across 4 GPUs within a node
   pipeline_parallel_degree: 1
   context_parallel_degree: 1
@@ -80,8 +87,8 @@ activation_checkpoint:
 metric_logging:
   wandb:
     project: "qwen3-32b-sft"                      # Main project name
-    group: "32b_8node_${oc.env:USER}"            # Group by model size, nodes, and user
-    logging_mode: global_reduce                   # Average metrics across all 32 GPUs
+    group: "32b_32node_${oc.env:USER}"           # Group by model size, nodes, and user
+    logging_mode: global_reduce                   # Average metrics across all 128 GPUs
   # console:
   #   reduce_across_ranks: True
 
