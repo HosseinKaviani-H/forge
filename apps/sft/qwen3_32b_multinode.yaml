@@ -51,8 +51,8 @@ training:
 
 parallelism:
   data_parallel_replicate_degree: 1
-  data_parallel_shard_degree: -1   # Auto-compute: uses all GPUs for FSDP
-  tensor_parallel_degree: 1
+  data_parallel_shard_degree: 32   # Auto-compute: uses all GPUs for FSDP
+  tensor_parallel_degree: 4
   pipeline_parallel_degree: 1
   context_parallel_degree: 1
   expert_parallel_degree: 1
