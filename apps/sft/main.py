@@ -121,7 +121,9 @@ class ForgeSFTRecipe(ForgeActor, ForgeEngine):
             "NCCL_SOCKET_IFNAME": os.environ.get(
                 "NCCL_SOCKET_IFNAME", "eth0,eno1,enp0s31f6,enp50s0"
             ),  # Try multiple network interfaces
-            "NCCL_DEBUG": os.environ.get("NCCL_DEBUG", "WARN"),  # Reduce debug verbosity
+            "NCCL_DEBUG": os.environ.get(
+                "NCCL_DEBUG", "WARN"
+            ),  # Reduce debug verbosity
             "NCCL_IB_DISABLE": os.environ.get(
                 "NCCL_IB_DISABLE", "1"
             ),  # Disable InfiniBand (IB interfaces are DOWN on this cluster)
@@ -186,11 +188,22 @@ class ForgeSFTRecipe(ForgeActor, ForgeEngine):
             ),
         )
 
+        # Get data config from YAML (num_shards_per_rank, num_dataloader_workers)
+        data_config = getattr(self.job_config, "data", None)
+        num_shards_per_rank = (
+            getattr(data_config, "num_shards_per_rank", 64) if data_config else 64
+        )
+        num_dataloader_workers = (
+            getattr(data_config, "num_dataloader_workers", 1) if data_config else 1
+        )
+
         dataset = sft_iterable_dataset(
             model_transform=tokenizer,
             message_transform=AlpacaToMessages(),
             path=dataset_path,
             split=dataset_split,
+            num_shards_per_rank=num_shards_per_rank,
+            num_dataloader_workers=num_dataloader_workers,
         )
         packer = TextPacker(padding_idx=0)
         dataset = PackedDataset(
