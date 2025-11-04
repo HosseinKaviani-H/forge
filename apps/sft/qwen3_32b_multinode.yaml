@@ -41,10 +41,10 @@ lr_scheduler:
   warmup_steps: 200
 
 training:
-  local_batch_size: 1    # Batch size per GPU (32B is large, keep at 1)
+  local_batch_size: 8    # Batch size per GPU (32B is large, keep at 1)
   seq_len: 2048
   max_norm: 1.0
-  steps: 600
+  steps: 5000
   compile: false
   dataset: "c4"
 
