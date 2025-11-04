@@ -98,9 +98,9 @@ class ForgeSFTRecipe(ForgeActor, ForgeEngine):
         # For multi-node setups, LOCAL_RANK should be rank % gpus_per_node
         size_info = current_size()
         
-        # Get GPUs per node (procs per host) from the mesh configuration
-        # This is the last dimension in size_info, which represents processes per node
-        local_world_size = list(size_info.values())[-1] if size_info else self._size
+        # Get GPUs per node directly from 'procs' key (processes per host)
+        # size_info = {'hosts': 8, 'procs': 4} for 8 nodes with 4 GPUs each
+        local_world_size = size_info.get('procs', self._size) if size_info else self._size
         local_rank = self._rank % local_world_size
 
         env = {
