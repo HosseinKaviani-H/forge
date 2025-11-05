@@ -72,7 +72,7 @@ checkpoint:
 
 activation_checkpoint:
   mode: selective
-  selective_ac_option: 2  # Checkpoint every 2 layers (2x faster than 'op')
+  selective_ac_option: "2"  # Checkpoint every 2 layers (must be string!)
 
 # Metric logging configuration
 metric_logging:
