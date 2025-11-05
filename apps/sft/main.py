@@ -64,7 +64,6 @@ class ForgeSFTRecipe(ForgeActor, ForgeEngine):
     checkpointer: Checkpointer
     tokenizer: Tokenizer
     train_dataloader: Dataloader
-    val_dataloader: Dataloader
     metric_logger: MetricLogger
     profiler: Profiler
     device: torch.device
@@ -168,11 +167,6 @@ class ForgeSFTRecipe(ForgeActor, ForgeEngine):
         # Setup training data (first 90% of train split)
         self.train_dataloader = self.setup_data(
             dataset_path="yahma/alpaca-cleaned", dataset_split="train[:90%]"
-        )
-
-        # Setup validation data (last 10% of train split)
-        self.val_dataloader = self.setup_data(
-            dataset_path="yahma/alpaca-cleaned", dataset_split="train[90%:]"
         )
 
         # Initialize metric logger - disable for now due to actor initialization issues

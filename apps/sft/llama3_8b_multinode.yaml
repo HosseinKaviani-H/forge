@@ -19,7 +19,7 @@ provisioner:
 actors:
   trainer:
     procs: 4              # Number of GPU processes per node
-    hosts: 2              # Number of nodes to use (multi-node!)
+    hosts: 1              # Number of nodes to use (multi-node!)
     with_gpus: true
     mesh_name: trainer
 
@@ -37,14 +37,16 @@ lr_scheduler:
   warmup_steps: 200
 
 training:
-  local_batch_size: 1    # Batch size per GPU
+  local_batch_size: 2    # Batch size per GPU
   seq_len: 2048
   max_norm: 1.0
-  steps: 600
+  steps: 5000
   compile: false
   dataset: "c4"
-  eval_interval: 500     # Run evaluation every N steps
-  eval_steps: 100        # Number of validation batches per eval
+
+data:
+  num_shards_per_rank: 64   # Default: 64 for large datasets (C4), use 8 for small datasets (Alpaca)
+  num_dataloader_workers: 0  # 0 = no worker processes (avoid CUDA fork issues)
 
 parallelism:
   data_parallel_replicate_degree: 1
@@ -73,14 +75,11 @@ activation_checkpoint:
   mode: selective
   selective_ac_option: op
 
-# Optional: Metric logging configuration
-# metric_logging:
-#   wandb:
-#     project: "sft-training"
-#     group: "sft_exp_${oc.env:USER}"
-#     reduce_across_ranks: True
-#   console:
-#     reduce_across_ranks: True
+metric_logging:
+  wandb:
+    project: "llama3-8b-sft"                      # Main project name
+    group: "8b_1node_${oc.env:USER}"           # Group by model size, nodes, and user
+    logging_mode: global_reduce                   # Average metrics across all 128 GPUs
 
 # Optional: Profiling configuration
 # profiling:

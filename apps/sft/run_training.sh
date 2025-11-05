@@ -17,7 +17,7 @@ export HF_HUB_OFFLINE=1
 # Topology: 6 blocks with 18 nodes each
 # 32 nodes need: 18 (block 1) + 14 (block 2) = 2 blocks minimum
 # SLURM_SWITCHES=2 optimizes for network locality
-export SLURM_SWITCHES=2
+export SLURM_SWITCHES=1
 
 # Optional: WandB configuration
 # Uncomment and set your API key if using WandB
@@ -35,7 +35,7 @@ echo ""
 
 # Run training
 cd /home/ubuntu/Hosseinkh/Forge_Branches/multinode/forge
-python -m apps.sft.main --config apps/sft/qwen3_32b_multinode.yaml
+python -m apps.sft.main --config apps/sft/llama3_8b_multinode.yaml
 
 echo ""
 echo "=== Training Complete ==="
