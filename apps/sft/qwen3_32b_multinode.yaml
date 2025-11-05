@@ -52,8 +52,8 @@ data:
 
 parallelism:
   data_parallel_replicate_degree: 1
-  data_parallel_shard_degree: 16   # FSDP shards: 32 shards × 4 TP = 128 total GPUs
-  tensor_parallel_degree: 8        # Split model across 4 GPUs within a node
+  data_parallel_shard_degree: 32   # FSDP shards: 32 shards × 4 TP = 128 total GPUs
+  tensor_parallel_degree: 4        # Split model across 4 GPUs within a node (no cross-node TP)
   pipeline_parallel_degree: 1
   context_parallel_degree: 1
   expert_parallel_degree: 1
