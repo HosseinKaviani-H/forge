@@ -49,7 +49,7 @@ data:
   num_dataloader_workers: 0  # 0 = no worker processes (avoid CUDA fork issues)
 
 parallelism:
-  data_parallel_replicate_degree: 2
+  data_parallel_replicate_degree: 1
   data_parallel_shard_degree: -1   # Auto-compute: uses all GPUs for FSDP
   tensor_parallel_degree: 1
   pipeline_parallel_degree: 1
