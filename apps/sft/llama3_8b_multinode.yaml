@@ -45,7 +45,7 @@ training:
   dataset: "c4"
 
 data:
-  num_shards_per_rank: 64   # Default: 64 for large datasets (C4), use 8 for small datasets (Alpaca)
+  num_shards_per_rank: 16   # Default: 64 for large datasets (C4), use 8 for small datasets (Alpaca)
   num_dataloader_workers: 0  # 0 = no worker processes (avoid CUDA fork issues)
 
 parallelism:
