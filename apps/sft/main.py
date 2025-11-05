@@ -83,6 +83,14 @@ class ForgeSFTRecipe(ForgeActor, ForgeEngine):
         self._size = math.prod(current_size().values())
 
         self._init_dist()
+
+        # CRITICAL: Set PyTorch distributed timeout BEFORE super().__init__()
+        # Default is 600s (10 min), but slow cross-rack Ethernet needs more time
+        import datetime
+
+        torch.distributed.default_pg_timeout = datetime.timedelta(hours=2)
+        logger.info("Set PyTorch distributed timeout to 2 hours for slow network")
+
         super().__init__(job_config)
 
     def _init_dist(self):

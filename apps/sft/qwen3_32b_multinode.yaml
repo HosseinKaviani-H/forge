@@ -14,10 +14,6 @@ provisioner:
   cpu: 128            # CPUs per node
   memory_mb: 1655502  # Memory in MB per node
   gpus_per_node: 4    # Number of GPUs per node
-  # Optional: For 8 nodes spread across racks:
-  # - SLURM_SWITCHES=4: allows 2 nodes from each of 4 racks (2x4=8 nodes)
-  # - SLURM_SWITCHES=2: forces 4 nodes from each of 2 racks (4x2=8 nodes)
-  # export SLURM_SWITCHES=4 before running training for balanced rack distribution
 
 # Actor configuration for multi-node training
 actors:
@@ -45,12 +41,10 @@ training:
   seq_len: 2048
   max_norm: 1.0
   steps: 5000
-  compile: false
+  compile: true
   dataset: "c4"
 
-# Data loading configuration
-# Fix: Reduce num_shards_per_rank to avoid "number of shards > dataset size" error
-# For 128 GPUs with 5176 samples: 128 × 8 = 1024 shards < 5176 ✅
+
 data:
   num_shards_per_rank: 8   # Default is 64, reduce to 8 for small datasets
   num_dataloader_workers: 0  # 0 = no worker processes (avoid CUDA fork issues)
@@ -58,8 +52,8 @@ data:
 
 parallelism:
   data_parallel_replicate_degree: 1
-  data_parallel_shard_degree: 32   # FSDP shards: 32 shards × 4 TP = 128 total GPUs
-  tensor_parallel_degree: 4        # Split model across 4 GPUs within a node
+  data_parallel_shard_degree: 16   # FSDP shards: 32 shards × 4 TP = 128 total GPUs
+  tensor_parallel_degree: 8        # Split model across 4 GPUs within a node
   pipeline_parallel_degree: 1
   context_parallel_degree: 1
   expert_parallel_degree: 1
@@ -71,10 +65,6 @@ checkpoint:
   # To fine-tune from pre-trained HF model (base model), uncomment these:
   initial_load_path: "/home/ubuntu/Hosseinkh/Qwen3-32B"
   initial_load_in_hf: true
-  # To resume from a saved checkpoint, use:
-  # initial_load_path: "/home/ubuntu/Hosseinkh/Qwen3-32B/checkpoints/step-1000"
-  # initial_load_in_hf: false
-  # To start from scratch (random initialization), comment out initial_load_path and initial_load_in_hf
   last_save_in_hf: true
   interval: 500
   async_mode: "disabled"
