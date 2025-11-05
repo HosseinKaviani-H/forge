@@ -151,7 +151,9 @@ class ForgeSFTRecipe(ForgeActor, ForgeEngine):
         logger.info("env: {}".format(env))
 
     async def setup_metric_logger(self):
-        """Initialization happens in the main process. Here we just retrieve it"""
+        """Retrieve the already-initialized metric logger from main process"""
+        # Don't create new logger - it was already initialized in main process
+        # Just retrieve the existing one
         mlogger = await get_or_create_metric_logger()
         return mlogger
 
@@ -173,8 +175,15 @@ class ForgeSFTRecipe(ForgeActor, ForgeEngine):
             dataset_path="yahma/alpaca-cleaned", dataset_split="train[90%:]"
         )
 
-        # Initialize metric logger
-        self.mlogger = await self.setup_metric_logger()
+        # Initialize metric logger - disable for now due to actor initialization issues
+        try:
+            self.mlogger = await self.setup_metric_logger()
+        except Exception as e:
+            logger.warning(f"Failed to initialize metric logger: {e}")
+            logger.warning(
+                "Continuing without metric logger - metrics will log to console only"
+            )
+            self.mlogger = None
 
         # Load checkpoint if resuming
         self.checkpointer.load(step=self.current_step)
@@ -370,7 +379,7 @@ class ForgeSFTRecipe(ForgeActor, ForgeEngine):
             self.current_step += 1
 
             # Flush metrics
-            if self._rank == 0:
+            if self._rank == 0 and self.mlogger is not None:
                 logger.debug(f"Flushing metrics at step {self.current_step}")
                 await self.mlogger.flush.call_one(global_step=self.current_step)
 
