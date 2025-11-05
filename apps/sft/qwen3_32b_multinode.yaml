@@ -37,7 +37,7 @@ lr_scheduler:
   warmup_steps: 200
 
 training:
-  local_batch_size: 8    # Batch size per GPU for better convergence
+  local_batch_size: 4    # Batch size per GPU for better convergence
   seq_len: 2048
   max_norm: 1.0
   steps: 5000

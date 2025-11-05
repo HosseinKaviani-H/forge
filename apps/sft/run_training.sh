@@ -13,9 +13,11 @@ export HF_DATASETS_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 export HF_HUB_OFFLINE=1
 
-# SLURM configuration for 8-node, 4-racks distribution
-# SLURM_SWITCHES=4 means: 2 nodes from each of 4 racks (2×4=8 nodes)
-export SLURM_SWITCHES=4
+# SLURM configuration for 32-node allocation
+# Topology: 6 blocks with 18 nodes each
+# 32 nodes need: 18 (block 1) + 14 (block 2) = 2 blocks minimum
+# SLURM_SWITCHES=2 optimizes for network locality
+export SLURM_SWITCHES=2
 
 # Optional: WandB configuration
 # Uncomment and set your API key if using WandB
@@ -26,7 +28,7 @@ export SLURM_SWITCHES=4
 
 echo "Environment Variables Set:"
 echo "  HF_DATASETS_OFFLINE=$HF_DATASETS_OFFLINE"
-echo "  TRANSFORMERS_OFFLINE=$TRANSFORMERS_OFFLINE"  
+echo "  TRANSFORMERS_OFFLINE=$TRANSFORMERS_OFFLINE"
 echo "  HF_HUB_OFFLINE=$HF_HUB_OFFLINE"
 echo "  SLURM_SWITCHES=$SLURM_SWITCHES"
 echo ""
