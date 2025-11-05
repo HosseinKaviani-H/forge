@@ -37,13 +37,13 @@ lr_scheduler:
   warmup_steps: 200
 
 training:
-  local_batch_size: 8    # Batch size per GPU for better convergence
+  local_batch_size: 8    # Batch size per GPU (8 samples per step)
   seq_len: 2048
   max_norm: 1.0
   steps: 5000
   compile: true
   dataset: "c4"
-  gradient_accumulation_steps: 2
+  gradient_accumulation_steps: 2  # Effective batch = 8×2 = 16 per GPU for convergence
 
 
 data:
@@ -68,11 +68,11 @@ checkpoint:
   initial_load_in_hf: true
   last_save_in_hf: true
   interval: 500
-  async_mode: "async"
+  async_mode: "async"  # Save checkpoints in background without blocking training
 
 activation_checkpoint:
   mode: selective
-  selective_ac_option: int
+  selective_ac_option: 2  # Checkpoint every 2 layers (2x faster than 'op')
 
 # Metric logging configuration
 metric_logging:
