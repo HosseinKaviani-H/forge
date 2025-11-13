@@ -51,7 +51,7 @@ trainer:
   model:
     name: qwen3
     flavor: 32B
-    hf_assets_path: hf://${model}
+    hf_assets_path: /home/ubuntu/Hosseinkh/Qwen3-32B
   optimizer:
     name: AdamW
     lr: 1e-5
@@ -77,8 +77,8 @@ trainer:
     disable_loss_parallel: true
   checkpoint:
     enable: true
-    folder: ./checkpoint              # The folder to save checkpoints to.
-    initial_load_path: hf://${model}  # The path to load the initial checkpoint from. Ignored if `folder` exists.
+    folder: /home/ubuntu/Hosseinkh/Qwen3-32B/checkpoint              # The folder to save checkpoints to.
+    initial_load_path: /home/ubuntu/Hosseinkh/Qwen3-32B # The path to load the initial checkpoint from. Ignored if `folder` exists.
     initial_load_in_hf: true          # If true, interpret initial_load_path as a HuggingFace model repo
     last_save_in_hf: true
     interval: 500
@@ -121,7 +121,7 @@ ref_model:
 services:
   policy:
     procs: ${policy.engine_args.tensor_parallel_size}
-    num_replicas: 4
+    num_replicas: 2
     hosts: 1
     with_gpus: true
     mesh_name: policy
@@ -142,8 +142,8 @@ actors:
     with_gpus: false
     mesh_name: dataset
   trainer:
-    procs: 8
-    hosts: 1
+    procs: 4
+    hosts: 4
     with_gpus: true
     mesh_name: trainer
   replay_buffer:
