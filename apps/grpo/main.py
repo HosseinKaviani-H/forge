@@ -17,6 +17,7 @@ from apps.grpo.grading import MathReward, ThinkingReward
 from forge.actors.reference_model import ReferenceModel
 from forge.actors.replay_buffer import ReplayBuffer
 from forge.actors.trainer import TitanTrainer
+from forge.api.types import TextTrainBatch
 from forge.controller.provisioner import init_provisioner, shutdown
 from forge.data_models.completion import Completion
 from forge.observability.metric_actors import get_or_create_metric_logger

@@ -49,6 +49,7 @@ class TextTrainBatch:
     target_ids: torch.Tensor
     target_mask: torch.Tensor | None = None
     target_weights: torch.Tensor | None = None
+    extra: dict[str, torch.Tensor] | None = None
 
 
 @dataclass
