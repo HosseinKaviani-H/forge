@@ -153,6 +153,8 @@ class TitanTrainer(ForgeActor):
         t = Tracer("trainer_perf/forward_backward", timer="gpu", track_memory=True)
         t.start()
 
+        self.engine.gc_handler.run(self.step)
+
         model_parts = self.engine.model_parts
         parallel_dims = self.engine.parallel_dims
         optional_context_parallel_ctx = None
@@ -173,6 +175,12 @@ class TitanTrainer(ForgeActor):
             if batch.target_weights is not None
             else None
         )
+
+        # Move extra tensors to device (for RL, contains ref_logprobs, etc.)
+        if batch.extra is not None:
+            for key, value in batch.extra.items():
+                if isinstance(value, torch.Tensor):
+                    batch.extra[key] = value.to(self.engine.device)
 
         with self.engine.train_context(optional_context_parallel_ctx):
             assert len(model_parts) == 1
@@ -260,6 +268,8 @@ class TitanTrainer(ForgeActor):
         Returns:
             Model output logits.
         """
+        self.engine.gc_handler.run(self.step)
+
         model_parts = self.engine.model_parts
 
         # Move inputs to device
@@ -494,6 +504,8 @@ class TitanTrainer(ForgeActor):
         batch_to_device(local_targets, self.engine.device)
 
         # Forward/backward pass
+        self.engine.gc_handler.run(self.step)
+
         model_parts = self.engine.model_parts
         parallel_dims = self.engine.parallel_dims
 

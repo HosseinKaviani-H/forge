@@ -83,6 +83,36 @@ def simple_grpo_loss(
     return loss
 
 
+def grpo_loss_fn(outputs: dict, batch: TextTrainBatch) -> torch.Tensor:
+    """GRPO loss function conforming to the Trainer LossFn protocol.
+
+    This wrapper extracts tensors from TextTrainBatch.extra and calls simple_grpo_loss.
+
+    Args:
+        outputs: Dict containing "logits" from the model forward pass
+        batch: TextTrainBatch with extra containing ref_logprobs, response, etc.
+
+    Returns:
+        GRPO loss tensor
+    """
+    logits = outputs["logits"]
+    extra = batch.extra
+
+    # Extract RL-specific tensors from batch.extra
+    response = extra["response"]
+    ref_logprobs = extra["ref_logprobs"]
+    advantages = extra["advantages"]
+    padding_mask = extra["padding_mask"]
+
+    return simple_grpo_loss(
+        logits=logits,
+        response=response,
+        ref_logprobs=ref_logprobs,
+        advantages=advantages,
+        padding_mask=padding_mask,
+    )
+
+
 async def main(cfg: DictConfig):
     """Main GRPO training loop with rollout and training processes."""
     # Convert OmegaConf config to plain dict
@@ -142,6 +172,10 @@ async def main(cfg: DictConfig):
 
     # Set max_steps to the configured value, or -1 if not specified or Null
     max_steps = cfg.trainer.training.steps or -1
+
+    # Get DP rank for selecting local batch
+    trainer_config = await trainer.get_config.call_one()
+    dp_rank = trainer_config.parallelism.dp_rank
 
     print("All services initialized successfully!")
     shutdown_event = asyncio.Event()
@@ -297,25 +331,37 @@ async def main(cfg: DictConfig):
                 t.start()
                 restart_tracer = False
 
-            batch = await replay_buffer.sample.call_one(
+            # Sample returns list[TextTrainBatch] (one per DP rank)
+            batches = await replay_buffer.sample.call_one(
                 curr_policy_version=training_step
             )
-            if batch is None:
+            if batches is None:
                 await asyncio.sleep(0.1)
             else:
                 t.step("waiting_for_buffer")
 
-                inputs, targets = batch
-                await trainer.train_step.call(inputs, targets)
-                training_step += 1
-                t.step("train_step")
+                # Get local batch for this DP rank
+                local_batch = batches[dp_rank]
 
+                # Forward/backward pass using Trainer protocol
+                result = await trainer.forward_backward.call(local_batch, grpo_loss_fn)
+                record_metric("trainer/loss", result.loss, Reduce.MEAN)
+                t.step("forward_backward")
+
+                # Optimizer step using Trainer protocol
+                step_result = await trainer.optim_step.call()
+                training_step = step_result.step
+                t.step("optim_step")
+
+                # Push weights to TorchStore for vLLM sync
                 await trainer.push_weights.call(training_step)
                 t.step("push_weights")
 
+                # Update policy weights in vLLM generators
                 await policy.update_weights.fanout(training_step)
                 t.step("update_weights")
 
+                # Drop old weights from TorchStore
                 if training_step >= 2:
                     await drop_weights(training_step - 1)
                     t.step("drop_weights")
