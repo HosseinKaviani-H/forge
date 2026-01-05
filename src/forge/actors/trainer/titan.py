@@ -9,7 +9,7 @@ import os
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass, field, fields
-from typing import Any, Callable
+from typing import Callable
 
 import torch
 import torch.distributed.checkpoint as dcp
@@ -68,12 +68,6 @@ class TitanTrainer(ForgeActor):
 
     The trainer supports distributed training strategies including tensor parallelism,
     data parallelism, and FSDP (Fully Sharded Data Parallel).
-
-    The trainer handles:
-    - Forward and backward propagation with automatic mixed precision (AMP)
-    - Optimizer steps with learning rate scheduling
-    - Gradient accumulation across multiple forward_backward calls
-    - Checkpoint saving and loading
     """
 
     job: Job = field(default_factory=Job)
@@ -110,7 +104,7 @@ class TitanTrainer(ForgeActor):
                     f"{f.name} should be a {f.type} type or a dict like object"
                 )
 
-        self.step = 1  # fragile contract.
+        self.step = 1
         self.num_training_steps = self.training.steps
         self.gradient_accumulation_steps = 1
         self._accumulated_microbatches = 0
@@ -127,7 +121,7 @@ class TitanTrainer(ForgeActor):
             "use_dcp",
             "dcp_path",
         }:
-            engine_config.pop(key)  # Not part of job config
+            engine_config.pop(key)
         self.engine = ForgeEngine(ForgeJobConfig(**engine_config))
         self.engine.checkpointer.load(step=self.step)
         self.engine.optimizers.zero_grad()
@@ -187,7 +181,7 @@ class TitanTrainer(ForgeActor):
             with self.engine.maybe_enable_amp:
                 logits = model_parts[0](input_ids)
 
-                # Use custom loss_fn if provided, otherwise use default
+                # Use custom loss_fn if provided
                 if loss_fn is not None:
                     outputs = {"logits": logits}
                     loss = loss_fn(outputs, batch)
@@ -200,7 +194,7 @@ class TitanTrainer(ForgeActor):
                         kwargs["target_weights"] = target_weights
                     loss = self.loss(logits, **kwargs)
 
-            del logits  # Free before bwd to avoid peaking memory
+            del logits
             loss.backward()
 
         t.step("forward_backward")
@@ -268,8 +262,6 @@ class TitanTrainer(ForgeActor):
         Returns:
             Model output logits.
         """
-        self.engine.gc_handler.run(self.step)
-
         model_parts = self.engine.model_parts
 
         # Move inputs to device
@@ -300,16 +292,12 @@ class TitanTrainer(ForgeActor):
             Full path/URI where checkpoint was saved
         """
         if name is None:
-            name = (
-                f"step-{self.step}" if not weights_only else f"weights-step-{self.step}"
-            )
+            name = f"step-{self.step}" if not weights_only else f"weights-step-{self.step}"
 
-        # Use default path if not provided
         checkpoint_path = path or self.engine.checkpointer.folder
         full_path = os.path.join(checkpoint_path, name)
 
         if weights_only:
-            # Save only model weights
             sd = self.engine.checkpointer.states["model"].state_dict()
             self.engine.checkpointer.dcp_save(
                 sd,
@@ -317,7 +305,6 @@ class TitanTrainer(ForgeActor):
                 async_mode=self.engine.checkpointer.async_mode,
             )
         else:
-            # Save full training state
             self.engine.checkpointer.save(
                 curr_step=self.step,
                 last_step=False,
@@ -337,7 +324,6 @@ class TitanTrainer(ForgeActor):
             Path/URI that was loaded
         """
         if path is not None:
-            # Load from specific path
             states = self.engine.checkpointer._states_to_load(model_only=False)
             self.engine.checkpointer.dcp_load(
                 states,
@@ -347,7 +333,6 @@ class TitanTrainer(ForgeActor):
             )
             return path
         else:
-            # Load latest from default location
             self.engine.checkpointer.load(step=-1)
             return self.engine.checkpointer.folder
 
@@ -368,7 +353,7 @@ class TitanTrainer(ForgeActor):
             ep_degree=parallel_dims.ep if parallel_dims.ep_enabled else 1,
             world_size=parallel_dims.world_size,
             dp_rank=self.engine.dp_rank,
-            tp_rank=0,  # TODO: get actual TP rank
+            tp_rank=0,
             device=str(self.engine.device),
         )
 
@@ -378,8 +363,7 @@ class TitanTrainer(ForgeActor):
         }
 
         return TrainerConfig(
-            model_name=self.model.hf_assets_path
-            or f"{self.model.name}-{self.model.flavor}",
+            model_name=self.model.hf_assets_path or f"{self.model.name}-{self.model.flavor}",
             model_config=model_config,
             parallelism=parallelism_config,
         )
@@ -403,7 +387,6 @@ class TitanTrainer(ForgeActor):
         Returns:
             The tokenizer for this model
         """
-        # TODO: Implement tokenizer access
         raise NotImplementedError("get_tokenizer not yet implemented")
 
     # =========================================================================
@@ -413,9 +396,6 @@ class TitanTrainer(ForgeActor):
     @endpoint
     async def push_weights(self, policy_version: int) -> None:
         """Push weights to TorchStore for vLLM policy synchronization.
-
-        This is an RL-specific extension for synchronizing policy weights
-        with vLLM generators during online RL training.
 
         Args:
             policy_version: Version number for the policy weights
@@ -469,83 +449,3 @@ class TitanTrainer(ForgeActor):
         """Clean up trainer resources."""
         if self.engine.checkpointer:
             self.engine.checkpointer.close()
-    # =========================================================================
-    # Convenience Methods (for backward compatibility)
-    # =========================================================================
-
-    @endpoint
-    async def train_step(
-        self, inputs: list[dict[str, Tensor]], targets: list[dict[str, Tensor]]
-    ) -> float:
-        """Convenience method: full training step combining forward_backward + optim_step.
-
-        This method is provided for backward compatibility with existing GRPO code.
-        It internally uses the Trainer protocol methods.
-
-        Args:
-            inputs: List of input dicts (one per DP rank). Each dict contains "tokens".
-            targets: List of target dicts (one per DP rank). Each dict contains
-                "response", "ref_logprobs", "advantages", "padding_mask".
-
-        Returns:
-            Loss value (all-reduced across DP ranks)
-        """
-        from forge.data.utils import batch_to_device
-
-        t = Tracer("trainer_perf/train_step", timer="gpu", track_memory=True)
-        t.start()
-
-        self.engine.gc_handler.run(self.step)
-
-        # Get local batch for this DP rank
-        local_inputs = inputs[self.engine.dp_rank]
-        local_targets = targets[self.engine.dp_rank]
-        batch_to_device(local_inputs, self.engine.device)
-        batch_to_device(local_targets, self.engine.device)
-
-        # Forward/backward pass
-        self.engine.gc_handler.run(self.step)
-
-        model_parts = self.engine.model_parts
-        parallel_dims = self.engine.parallel_dims
-
-        if parallel_dims.pp_enabled:
-            raise NotImplementedError("PP not implemented yet")
-
-        with self.engine.train_context(None):
-            assert len(model_parts) == 1
-            with self.engine.maybe_enable_amp:
-                logits = model_parts[0](**local_inputs)
-                loss = self.loss(logits, **local_targets)
-            del logits
-            loss.backward()
-
-        t.step("forward_backward")
-
-        # All-reduce loss
-        torch.distributed.all_reduce(loss)
-
-        current_lr = self.engine.lr_schedulers.schedulers[0].get_last_lr()[0]
-        record_metric("trainer/learning_rate", current_lr, Reduce.MIN)
-
-        # Optimizer step
-        self.engine.optimizers.step()
-        self.engine.optimizers.zero_grad()
-        self.engine.lr_schedulers.step()
-        t.step("optimizer_step")
-
-        loss_val = loss.detach().item()
-        record_metric("trainer/loss", loss_val, Reduce.MEAN)
-
-        self.step += 1
-        self._accumulated_microbatches = 0
-
-        # Save checkpoint
-        self.engine.checkpointer.save(
-            curr_step=self.step,
-            last_step=self.step == self.num_training_steps,
-        )
-        t.step("save_checkpoint")
-        t.stop()
-
-        return loss_val
