@@ -292,7 +292,9 @@ class TitanTrainer(ForgeActor):
             Full path/URI where checkpoint was saved
         """
         if name is None:
-            name = f"step-{self.step}" if not weights_only else f"weights-step-{self.step}"
+            name = (
+                f"step-{self.step}" if not weights_only else f"weights-step-{self.step}"
+            )
 
         checkpoint_path = path or self.engine.checkpointer.folder
         full_path = os.path.join(checkpoint_path, name)
@@ -363,7 +365,8 @@ class TitanTrainer(ForgeActor):
         }
 
         return TrainerConfig(
-            model_name=self.model.hf_assets_path or f"{self.model.name}-{self.model.flavor}",
+            model_name=self.model.hf_assets_path
+            or f"{self.model.name}-{self.model.flavor}",
             model_config=model_config,
             parallelism=parallelism_config,
         )
