@@ -157,24 +157,24 @@ class TitanTrainer(ForgeActor):
             raise NotImplementedError("PP not implemented yet")
 
         # Move batch tensors to device
-        input_ids = batch.input_ids.to(self.engine.device)
-        target_ids = batch.target_ids.to(self.engine.device)
+        input_ids = batch["input_ids"].to(self.engine.device)
+        target_ids = batch["target_ids"].to(self.engine.device)
         target_mask = (
-            batch.target_mask.to(self.engine.device)
-            if batch.target_mask is not None
+            batch["target_mask"].to(self.engine.device)
+            if batch["target_mask"] is not None
             else None
         )
         target_weights = (
-            batch.target_weights.to(self.engine.device)
-            if batch.target_weights is not None
+            batch["target_weights"].to(self.engine.device)
+            if batch["target_weights"] is not None
             else None
         )
 
         # Move extra tensors to device (for RL, contains ref_logprobs, etc.)
-        if batch.extra is not None:
-            for key, value in batch.extra.items():
+        if batch["extra"] is not None:
+            for key, value in batch["extra"].items():
                 if isinstance(value, torch.Tensor):
-                    batch.extra[key] = value.to(self.engine.device)
+                    batch["extra"][key] = value.to(self.engine.device)
 
         with self.engine.train_context(optional_context_parallel_ctx):
             assert len(model_parts) == 1

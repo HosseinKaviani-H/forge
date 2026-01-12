@@ -33,9 +33,7 @@ def collate(batches: list[Group]) -> list[TextTrainBatch]:
     for batch in batches:
         request = torch.stack([e.request_tensor for e in batch])  # [b, req_len]
         response = torch.stack([e.response_tensor for e in batch])  # [b, res_len]
-        ref_logprobs = torch.stack(
-            [e.ref_logprobs for e in batch]
-        ).squeeze()  # [b, res_len]
+        ref_logprobs = torch.stack([e.ref_logprobs for e in batch]).squeeze()  # [b, res_len]
         advantages = torch.tensor([e.advantage for e in batch])  # [b]
 
         pad_id = batch[0].pad_id
@@ -48,18 +46,18 @@ def collate(batches: list[Group]) -> list[TextTrainBatch]:
         # Full input sequence for model forward pass
         input_ids = torch.cat([request, response], dim=1)  # [b, req_len + res_len]
 
-        text_batch = TextTrainBatch(
-            input_ids=input_ids,
-            target_ids=response,
-            target_mask=padding_mask,
-            target_weights=target_weights,
-            extra={
+        text_batch: TextTrainBatch = {
+            "input_ids": input_ids,
+            "target_ids": response,
+            "target_mask": padding_mask,
+            "target_weights": target_weights,
+            "extra": {
                 "ref_logprobs": ref_logprobs,
-                "response": response,  # Needed for logprob computation in loss
-                "padding_mask": padding_mask,  # Binary mask for loss
-                "advantages": advantages,  # Original per-sequence advantages
+                "response": response,
+                "padding_mask": padding_mask,
+                "advantages": advantages,
             },
-        )
+        }
         result.append(text_batch)
 
     return result

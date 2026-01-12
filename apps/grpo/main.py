@@ -96,9 +96,9 @@ def grpo_loss_fn(outputs: dict, batch: TextTrainBatch) -> torch.Tensor:
         GRPO loss tensor
     """
     logits = outputs["logits"]
-    extra = batch.extra
+    extra = batch["extra"]
 
-    # Extract RL-specific tensors from batch.extra
+    # Extract RL-specific tensors from batch["extra"]
     response = extra["response"]
     ref_logprobs = extra["ref_logprobs"]
     advantages = extra["advantages"]
